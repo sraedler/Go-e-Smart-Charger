@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  goe-pv-steuerung:
+    build: .
+    container_name: goe_pv_steuerung
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persistierung der Konfiguration bei Container-Neustarts
+      - ./config.json:/app/config.json
+    environment:
+      - TZ=Europe/Berlin

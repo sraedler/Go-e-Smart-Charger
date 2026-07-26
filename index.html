@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Go-e PV">
+    <meta name="theme-color" content="#0b0f19">
+    <title>Go-e & SolarEdge PV-Ladesteuerung</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-globes">
+        <div class="globe globe-1"></div>
+        <div class="globe globe-2"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-bolt-lightning"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>Go-e PV Smart Charge</h1>
+                    <p class="subtitle">SolarEdge Überschuss-Steuerung</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="status-badge" id="system-status-badge">
+                    <span class="pulse-dot"></span>
+                    <span id="system-status-text">Verbinde...</span>
+                </div>
+                <button class="icon-btn" id="btn-refresh" title="Daten jetzt aktualisieren">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Content -->
+        <main class="dashboard-grid">
+            
+            <!-- Mode Selector Card (Hero Section) -->
+            <section class="card mode-card glass-effect">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-sliders"></i> Lademodus Wählen</h2>
+                    <span class="mode-indicator" id="current-mode-label">PV-Laden</span>
+                </div>
+                <div class="mode-switch-group">
+                    <button class="mode-btn" id="btn-mode-normal" onclick="setMode('normal')">
+                        <div class="mode-icon"><i class="fa-solid fa-plug-circle-bolt"></i></div>
+                        <div class="mode-info">
+                            <span class="mode-title">Normal Laden</span>
+                            <span class="mode-desc">Maximale Ladeleistung (Netzbezug erlaubt)</span>
+                        </div>
+                    </button>
+                    <button class="mode-btn active" id="btn-mode-pv" onclick="setMode('pv')">
+                        <div class="mode-icon"><i class="fa-solid fa-solar-panel"></i></div>
+                        <div class="mode-info">
+                            <span class="mode-title">PV Laden</span>
+                            <span class="mode-desc">Intelligentes Überschussladen aus Sonnenenergie</span>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- PV Threshold Configuration (Visible in PV Mode) -->
+                <div class="pv-threshold-box" id="pv-threshold-box">
+                    <div class="threshold-header">
+                        <div>
+                            <label for="threshold-slider" class="threshold-label">
+                                <i class="fa-solid fa-gauge-high"></i> Netzbezug-Toleranz (Threshold)
+                            </label>
+                            <p class="field-hint">Wie viel Watt dürfen maximal zusätzlich aus dem Netz bezogen werden?</p>
+                        </div>
+                        <div class="threshold-value-display">
+                            <span id="threshold-val-num">0</span> <small>W</small>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="threshold-slider" min="0" max="3000" step="100" value="0" oninput="updateThresholdDisplay(this.value)" onchange="saveThreshold(this.value)">
+                        <div class="slider-ticks">
+                            <span>0 W (Reine PV)</span>
+                            <span>1000 W</span>
+                            <span>2000 W</span>
+                            <span>3000 W</span>
+                        </div>
+                    </div>
+                    <div class="quick-presets">
+                        <span class="preset-title">Presets:</span>
+                        <button class="preset-chip" onclick="setThresholdPreset(0)">0 W (Reines PV)</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(500)">500 W (Leichtes Wölkchen)</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(1000)">1000 W (Kombiladen)</button>
+                    </div>
+                </div>
+
+                <!-- Normal Mode Ampere Setting (Visible in Normal Mode) -->
+                <div class="normal-setting-box" id="normal-setting-box" style="display: none;">
+                    <label class="threshold-label"><i class="fa-solid fa-bolt"></i> Festgelegter Ladestrom</label>
+                    <div class="ampere-selector">
+                        <button class="amp-btn" onclick="setNormalAmpere(6)">6 A (4.1 kW)</button>
+                        <button class="amp-btn" onclick="setNormalAmpere(10)">10 A (6.9 kW)</button>
+                        <button class="amp-btn active" onclick="setNormalAmpere(16)">16 A (11 kW)</button>
+                    </div>
+                </div>
+
+                <!-- Live Controller Status Banner -->
+                <div class="controller-banner" id="controller-banner">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span id="controller-banner-text">Regelkreis wird geladen...</span>
+                </div>
+            </section>
+
+            <!-- Energy Flow Diagram -->
+            <section class="card energy-flow-card glass-effect">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-diagram-project"></i> Energiefluss Live</h2>
+                    <span class="update-time" id="solaredge-update-time">--:--:--</span>
+                </div>
+                
+                <div class="power-flow-wrapper">
+                    <!-- Solar Node -->
+                    <div class="flow-node node-pv">
+                        <div class="node-icon"><i class="fa-solid fa-sun"></i></div>
+                        <div class="node-label">PV-Anlage</div>
+                        <div class="node-value" id="val-pv-power">0.0 kW</div>
+                    </div>
+
+                    <!-- Flow lines -->
+                    <div class="flow-center">
+                        <div class="hub-icon"><i class="fa-solid fa-house"></i></div>
+                        <div class="hub-label">Hausverbrauch</div>
+                        <div class="hub-value" id="val-load-power">0.0 kW</div>
+                    </div>
+
+                    <!-- Grid Node -->
+                    <div class="flow-node node-grid">
+                        <div class="node-icon"><i class="fa-solid fa-tower-cell"></i></div>
+                        <div class="node-label" id="label-grid">Netz</div>
+                        <div class="node-value" id="val-grid-power">0.0 kW</div>
+                    </div>
+
+                    <!-- Wallbox Node -->
+                    <div class="flow-node node-car">
+                        <div class="node-icon"><i class="fa-solid fa-car-side"></i></div>
+                        <div class="node-label">Go-e Wallbox</div>
+                        <div class="node-value" id="val-car-power">0.0 kW</div>
+                    </div>
+                </div>
+
+                <div class="surplus-summary-bar">
+                    <div class="summary-item">
+                        <span class="sum-label">Echter PV-Überschuss:</span>
+                        <span class="sum-value" id="val-pv-surplus">0 W</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="sum-label">Verfügbar (inkl. Threshold):</span>
+                        <span class="sum-value highlight" id="val-effective-available">0 W</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Go-e Wallbox Status Card -->
+            <section class="card wallbox-card glass-effect">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-charging-station"></i> Go-e Wallbox Status</h2>
+                    <span class="wallbox-state-tag" id="wallbox-state-tag">Bereit</span>
+                </div>
+                
+                <div class="wallbox-metrics">
+                    <div class="metric-box">
+                        <span class="m-label">Aktueller Strom</span>
+                        <span class="m-val" id="val-goe-amp">-- A</span>
+                    </div>
+                    <div class="metric-box">
+                        <span class="m-label">Ladeleistung</span>
+                        <span class="m-val" id="val-goe-power">0.0 kW</span>
+                    </div>
+                    <div class="metric-box">
+                        <span class="m-label">Phasen-Modus</span>
+                        <span class="m-val" id="val-goe-phases">Auto</span>
+                    </div>
+                    <div class="metric-box">
+                        <span class="m-label">Gesamt kWh</span>
+                        <span class="m-val" id="val-goe-kwh">0.0 kWh</span>
+                    </div>
+                </div>
+
+                <!-- Settings / IP Configuration -->
+                <div class="wallbox-config-panel">
+                    <h3><i class="fa-solid fa-gear"></i> Wallbox Verbindung</h3>
+                    <div class="input-group">
+                        <input type="text" id="goe-ip-input" placeholder="IP-Adresse (z.B. 192.168.100.67)" value="">
+                        <div class="ip-btn-group">
+                            <button class="btn-primary" id="btn-save-ip" onclick="saveGoeIp()">Speichern</button>
+                            <button class="btn-secondary" id="btn-test-ip" onclick="testGoeIp()">Testen</button>
+                        </div>
+                    </div>
+                    <p class="ip-feedback" id="ip-feedback-msg"></p>
+                </div>
+            </section>
+
+        </main>
+        
+        <!-- Mobile Sticky Footer Bar -->
+        <footer class="mobile-sticky-bar">
+            <div class="sticky-info">
+                <span class="sticky-label">Modus:</span>
+                <span class="sticky-val" id="mobile-sticky-mode">PV-Laden</span>
+            </div>
+            <div class="sticky-info">
+                <span class="sticky-label">Überschuss:</span>
+                <span class="sticky-val highlight" id="mobile-sticky-surplus">0 W</span>
+            </div>
+            <button class="sticky-btn" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+                <i class="fa-solid fa-arrow-up"></i>
+            </button>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
