@@ -10,13 +10,16 @@ import threading
 from datetime import datetime, timedelta
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+CERT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "certs")
+SERVER_CRT = os.path.join(CERT_DIR, "fullchain.crt") if os.path.exists(os.path.join(CERT_DIR, "fullchain.crt")) else os.path.join(CERT_DIR, "server.crt")
+SERVER_KEY = os.path.join(CERT_DIR, "server.key")
 
 # Global state
 config_lock = threading.Lock()
 state_lock = threading.Lock()
 
 default_config = {
-    "goe_ip": "",
+    "goe_ip": "192.168.100.67",
     "solaredge_api_key": "UAE8KFFWY50TYUBLMLHASRBYHI965DC1",
     "solaredge_site_id": "4353282",
     "mode": "pv",
@@ -26,7 +29,7 @@ default_config = {
     "max_pv_ampere": 16,
     "solaredge_poll_seconds": 180,
     "phases_setting": "auto", # auto, 1, 3
-    "server_port": 8080
+    "server_port": 2009
 }
 
 def load_config():
@@ -60,18 +63,18 @@ system_status = {
         "connected": False,
         "pv_power_w": 0,
         "load_power_w": 0,
-        "grid_power_w": 0, # positive = export to grid, negative = import from grid
+        "grid_power_w": 0,
         "grid_status": "Unknown",
         "last_update": None,
         "raw": {}
     },
     "goe": {
         "connected": False,
-        "car_state": 1, # 1: idle, 2: charging, 3: waiting, 4: finished
+        "car_state": 1,
         "car_state_text": "Nicht verbunden",
         "ampere": 6,
-        "force_state": 0, # 0: neutral, 1: off, 2: force
-        "phase_mode": 0, # 0: auto, 1: 1-phase, 2: 3-phase
+        "force_state": 0,
+        "phase_mode": 0,
         "charging_power_w": 0,
         "total_kwh": 0,
         "allowed": False,
@@ -81,7 +84,7 @@ system_status = {
     "controller": {
         "active_mode": global_config.get("mode", "pv"),
         "target_ampere": 0,
-        "target_force": 1, # 1 = stop
+        "target_force": 1,
         "target_phases": 0,
         "calculated_surplus_w": 0,
         "effective_available_w": 0,
@@ -106,10 +109,6 @@ def fetch_solaredge_data(api_key, site_id):
                 load_w = float(flow.get("LOAD", {}).get("currentPower", 0)) * 1000.0
                 grid_w = float(flow.get("GRID", {}).get("currentPower", 0)) * 1000.0
                 
-                # Check directional connections to determine grid import vs export
-                # In SolarEdge API:
-                # PV -> Load / Grid
-                # Load -> Grid (means export? Or Grid -> Load import?)
                 connections = flow.get("connections", [])
                 grid_is_export = False
                 grid_is_import = False
@@ -121,13 +120,11 @@ def fetch_solaredge_data(api_key, site_id):
                     elif frm == "GRID" and to in ["LOAD", "PV"]:
                         grid_is_import = True
 
-                # Signed grid power: + is export to grid, - is import from grid
                 if grid_is_import:
                     signed_grid_w = -abs(grid_w)
                 elif grid_is_export:
                     signed_grid_w = abs(grid_w)
                 else:
-                    # Fallback check
                     signed_grid_w = pv_w - load_w
 
                 return {
@@ -149,7 +146,6 @@ def fetch_goe_status(ip):
     
     clean_ip = ip.strip().replace("http://", "").replace("https://", "").rstrip("/")
     
-    # Try API v2 first: /api/status
     url_v2 = f"http://{clean_ip}/api/status?filter=car,amp,frc,psm,nrg,alw,pha,wh"
     try:
         req = urllib.request.Request(url_v2, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
@@ -160,13 +156,11 @@ def fetch_goe_status(ip):
                 car = data.get("car", 1)
                 car_texts = {1: "Bereit / Kein Auto", 2: "Lädt", 3: "Wartet auf Auto", 4: "Ladevorgang beendet"}
                 
-                # NRG array: nrg[11] is total power in Watts
                 nrg = data.get("nrg", [])
                 charging_w = 0
                 if len(nrg) > 11:
                     charging_w = float(nrg[11])
                 elif len(nrg) >= 3:
-                    # V1 fallback sum of phase powers
                     charging_w = float(sum(nrg[6:9])) if len(nrg) >= 9 else 0
                     
                 total_wh = float(data.get("wh", 0))
@@ -185,7 +179,6 @@ def fetch_goe_status(ip):
                     "raw": data
                 }
     except Exception as e_v2:
-        # Fallback to API v1: /status
         url_v1 = f"http://{clean_ip}/status"
         try:
             req = urllib.request.Request(url_v1, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
@@ -197,7 +190,7 @@ def fetch_goe_status(ip):
                     
                     nrg = data.get("nrg", [])
                     charging_w = float(nrg[11]) if len(nrg) > 11 else 0
-                    eto = float(data.get("eto", 0)) / 10.0 # total energy in 0.1 kWh
+                    eto = float(data.get("eto", 0)) / 10.0
                     
                     return {
                         "success": True,
@@ -222,7 +215,6 @@ def set_goe_param(ip, params):
     clean_ip = ip.strip().replace("http://", "").replace("https://", "").rstrip("/")
     query_str = urllib.parse.urlencode(params)
     
-    # Try API v2 first: /api/set?param=val
     url_v2 = f"http://{clean_ip}/api/set?{query_str}"
     try:
         req = urllib.request.Request(url_v2, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
@@ -231,7 +223,6 @@ def set_goe_param(ip, params):
                 data = json.loads(resp.read().decode('utf-8'))
                 return {"success": True, "api_version": "v2", "result": data}
     except Exception as e_v2:
-        # Try API v1 fallback: /mqt?payload=param=val
         url_v1 = f"http://{clean_ip}/mqt?payload={query_str}"
         try:
             req = urllib.request.Request(url_v1, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
@@ -263,7 +254,6 @@ def run_pv_controller():
             max_pv_amp = int(cfg.get("max_pv_ampere", 16))
             phases_setting = cfg.get("phases_setting", "auto")
 
-            # 1. Fetch SolarEdge data if interval elapsed
             if now - last_solaredge_fetch >= poll_interval:
                 print(f"[PV-Controller] Hole SolarEdge Daten (Site {site_id})...")
                 se_res = fetch_solaredge_data(api_key, site_id)
@@ -277,10 +267,8 @@ def run_pv_controller():
                         system_status["solaredge"]["raw"] = se_res["raw"]
                     else:
                         system_status["solaredge"]["connected"] = False
-                        print(f"[SolarEdge] Fehler: {se_res.get('error')}")
                 last_solaredge_fetch = now
 
-            # 2. Fetch Go-e Charger status
             goe_res = fetch_goe_status(goe_ip)
             with state_lock:
                 if goe_res["success"]:
@@ -299,46 +287,34 @@ def run_pv_controller():
                     system_status["goe"]["connected"] = False
                     system_status["goe"]["car_state_text"] = "Wallbox nicht erreichbar"
 
-            # 3. Apply Control Logic
             pv_w = system_status["solaredge"]["pv_power_w"]
             load_w = system_status["solaredge"]["load_power_w"]
-            grid_w = system_status["solaredge"]["grid_power_w"] # + = export, - = import
+            grid_w = system_status["solaredge"]["grid_power_w"]
             goe_w = system_status["goe"]["charging_power_w"]
 
-            # House consumption excluding charger
             house_base_w = max(0.0, load_w - goe_w)
-            
-            # Net PV Surplus available = PV - HouseBase
             pv_surplus_w = pv_w - house_base_w
-            
-            # Total Available Power with user threshold (allowed grid import)
             available_w = pv_surplus_w + pv_threshold
 
             target_amp = min_pv_amp
-            target_frc = 0 # 0 = neutral/auto
-            target_psm = 0 # 0 = auto, 1 = 1-phase, 2 = 3-phase
+            target_frc = 0
+            target_psm = 0
             msg = ""
 
             if mode == "normal":
-                target_frc = 0 # automatic / allow
+                target_frc = 0
                 target_amp = normal_amp
                 msg = f"Normalmodus: Laden mit festen {normal_amp} A"
-            else: # PV Überschussmodus
-                # Calculate required power levels (Assuming 3-phase by default or 230V / 400V)
-                # 1 phase @ 230V: 6A = 1380W, 16A = 3680W (~230W per Amp)
-                # 3 phase @ 400V: 6A = 4140W, 16A = 11040W (~690W per Amp)
-                
-                # Check phases setting
+            else:
                 if phases_setting == "1":
                     w_per_amp = 230.0
-                    min_power = 6.0 * 230.0 # 1380W
+                    min_power = 6.0 * 230.0
                     target_psm = 1
                 elif phases_setting == "3":
                     w_per_amp = 690.0
-                    min_power = 6.0 * 690.0 # 4140W
+                    min_power = 6.0 * 690.0
                     target_psm = 2
-                else: # auto
-                    # If available power is enough for 3-phase, use 3-phase (690W/A), else 1-phase (230W/A)
+                else:
                     if available_w >= 4140.0:
                         w_per_amp = 690.0
                         min_power = 4140.0
@@ -349,16 +325,15 @@ def run_pv_controller():
                         target_psm = 1
 
                 if available_w < min_power:
-                    target_frc = 1 # Stop / Off
+                    target_frc = 1
                     target_amp = min_pv_amp
                     msg = f"PV Laden pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W (Überschuss: {int(pv_surplus_w)} W, Netz-Toleranz: {int(pv_threshold)} W)"
                 else:
-                    target_frc = 0 # Neutral / allow charging
+                    target_frc = 0
                     calculated_amp = int(available_w / w_per_amp)
                     target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
                     msg = f"PV Laden aktiv: {target_amp} A ({'3-phasig' if target_psm==2 else '1-phasig'}). Verfügbar: {int(available_w)} W"
 
-            # Execute control changes on Go-e if connected and IP set
             if goe_ip and system_status["goe"]["connected"]:
                 curr_amp = system_status["goe"]["ampere"]
                 curr_frc = system_status["goe"]["force_state"]
@@ -388,7 +363,6 @@ def run_pv_controller():
                 system_status["controller"]["status_message"] = msg
                 system_status["controller"]["last_control_time"] = datetime.now().strftime("%H:%M:%S")
 
-                # Push history point
                 hist_item = {
                     "time": datetime.now().strftime("%H:%M"),
                     "pv": round(pv_w, 1),
@@ -404,9 +378,9 @@ def run_pv_controller():
         except Exception as e:
             print(f"[PV-Controller] Exception im Regelkreis: {e}")
             
-        time.sleep(15) # Loop sleep interval
+        time.sleep(15)
 
-# --- HTTP API & Static File Server Handler ---
+# --- HTTP / HTTPS API & Static File Server Handler ---
 class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -436,7 +410,6 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response(res)
 
         else:
-            # Serve static files from root directory
             if path == "/":
                 self.path = "/index.html"
             return super().do_GET()
@@ -462,7 +435,6 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response({"success": True, "config": global_config})
 
         elif path == "/api/force_poll":
-            # Force refresh SolarEdge & Go-e status immediately
             with config_lock:
                 api_key = global_config["solaredge_api_key"]
                 site_id = global_config["solaredge_site_id"]
@@ -503,7 +475,6 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
 def main():
     port = global_config.get("server_port", 8080)
     
-    # Start background controller thread
     t = threading.Thread(target=run_pv_controller, daemon=True)
     t.start()
     
@@ -512,10 +483,19 @@ def main():
     
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", port), AppRequestHandler) as httpd:
-        print(f"==================================================")
-        print(f"   Go-e & SolarEdge PV Steuerungs-Server gestartet!")
-        print(f"   Website erreichbar unter: http://localhost:{port}")
-        print(f"==================================================")
+        if os.path.exists(SERVER_CRT) and os.path.exists(SERVER_KEY):
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(certfile=SERVER_CRT, keyfile=SERVER_KEY)
+            httpd.socket = ssl_ctx.wrap_socket(httpd.socket, server_side=True)
+            print(f"==================================================")
+            print(f"   Go-e & SolarEdge PV Steuerungs-Server gestartet!")
+            print(f"   HTTPS Website erreichbar unter: https://localhost:{port}")
+            print(f"==================================================")
+        else:
+            print(f"==================================================")
+            print(f"   Go-e & SolarEdge PV Steuerungs-Server gestartet!")
+            print(f"   HTTP Website erreichbar unter: http://localhost:{port}")
+            print(f"==================================================")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

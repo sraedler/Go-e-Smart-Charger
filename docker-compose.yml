@@ -6,7 +6,7 @@ services:
     container_name: goe_pv_steuerung
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "2009:2009"
     volumes:
       # Persistierung der Konfiguration bei Container-Neustarts
       - ./config.json:/app/config.json

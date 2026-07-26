@@ -9,5 +9,5 @@
   "max_pv_ampere": 16,
   "solaredge_poll_seconds": 180,
   "phases_setting": "auto",
-  "server_port": 8080
+  "server_port": 2009
 }
