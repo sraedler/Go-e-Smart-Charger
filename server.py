@@ -246,10 +246,19 @@ def run_pv_controller():
             if today != last_reset_day:
                 last_reset_day = today
                 with config_lock:
-                    if global_config.get("midnight_reset", True) and global_config.get("mode") == "normal":
-                        global_config["mode"] = "pv"
-                        save_config(global_config)
-                        print(f"[{now_dt.strftime('%Y-%m-%d %H:%M:%S')}] [PV-Controller] Mitternachts-Reset: Lademodus von 'Normal Laden' auf 'PV Laden' zurückgesetzt.")
+                    if global_config.get("midnight_reset", True):
+                        reset_changes = []
+                        if global_config.get("mode") != "pv":
+                            global_config["mode"] = "pv"
+                            reset_changes.append("Lademodus -> PV Laden")
+                        if global_config.get("pv_threshold_watt", 0) != 0:
+                            global_config["pv_threshold_watt"] = 0
+                            reset_changes.append("Threshold -> 0 kW")
+                        
+                        if reset_changes:
+                            save_config(global_config)
+                            changes_str = ", ".join(reset_changes)
+                            print(f"[{now_dt.strftime('%Y-%m-%d %H:%M:%S')}] [PV-Controller] Mitternachts-Reset durchgeführt ({changes_str}).")
 
             now = time.time()
             with config_lock:
