@@ -407,8 +407,9 @@ def run_pv_controller():
             goe_w = system_status["goe"]["charging_power_w"]
 
             house_base_w = max(0.0, load_w - goe_w)
-            pv_surplus_w = pv_w - house_base_w
-            available_w = pv_surplus_w + pv_threshold
+            raw_pv_surplus_w = pv_w - house_base_w
+            pv_surplus_w = max(0.0, raw_pv_surplus_w)
+            available_w = max(pv_surplus_w, pv_threshold)
 
             target_amp = min_pv_amp
             target_frc = 0
@@ -567,7 +568,7 @@ def run_pv_controller():
                 system_status["controller"]["target_ampere"] = target_amp
                 system_status["controller"]["target_force"] = target_frc
                 system_status["controller"]["target_phases"] = target_psm
-                system_status["controller"]["calculated_surplus_w"] = round(pv_surplus_w, 1)
+                system_status["controller"]["calculated_surplus_w"] = round(raw_pv_surplus_w, 1)
                 system_status["controller"]["effective_available_w"] = round(available_w, 1)
                 system_status["controller"]["status_message"] = msg
                 system_status["controller"]["last_control_time"] = datetime.now().strftime("%H:%M:%S")
@@ -578,7 +579,7 @@ def run_pv_controller():
                     "load": round(load_w, 1),
                     "grid": round(grid_w, 1),
                     "charging": round(goe_w, 1),
-                    "surplus": round(pv_surplus_w, 1)
+                    "surplus": round(raw_pv_surplus_w, 1)
                 }
                 system_status["history"].append(hist_item)
                 if len(system_status["history"]) > 60:
