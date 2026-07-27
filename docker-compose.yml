@@ -1,4 +1,4 @@
-version: '3.8'
+name: goe-pv-steuerung
 
 services:
   goe-pv-steuerung:
@@ -8,7 +8,9 @@ services:
     ports:
       - "2009:2009"
     volumes:
-      # Persistierung der Konfiguration bei Container-Neustarts
+      # Persistierung der Konfiguration & SSL Zertifikate bei Container-Neustarts
       - ./config.json:/app/config.json
+      - ./certs:/app/certs
     environment:
-      - TZ=Europe/Berlin
+      - TZ=Europe/Vienna
+      - PYTHONUNBUFFERED=1
