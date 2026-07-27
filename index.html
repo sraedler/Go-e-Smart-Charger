@@ -200,15 +200,28 @@
                     </div>
                 </div>
 
+                <div class="wakeup-action-panel">
+                    <button class="btn-wakeup" id="btn-wakeup-car" onclick="wakeupCar()">
+                        <i class="fa-solid fa-bolt-lightning"></i> Auto aufwecken (CP-Signal-Reset)
+                    </button>
+                    <p class="wakeup-hint">Sendet einen kurzen Impuls an den Steuerkontakt (Control Pilot), um das Fahrzeug aus dem Schlafmodus zu wecken.</p>
+                </div>
+
                 <!-- Settings / IP Configuration -->
                 <div class="wallbox-config-panel">
-                    <h3><i class="fa-solid fa-gear"></i> Wallbox Verbindung</h3>
+                    <h3><i class="fa-solid fa-gear"></i> Wallbox Verbindung & Einstellungen</h3>
                     <div class="input-group">
                         <input type="text" id="goe-ip-input" placeholder="IP-Adresse (z.B. 192.168.100.67)" value="">
                         <div class="ip-btn-group">
                             <button class="btn-primary" id="btn-save-ip" onclick="saveGoeIp()">Speichern</button>
                             <button class="btn-secondary" id="btn-test-ip" onclick="testGoeIp()">Testen</button>
                         </div>
+                    </div>
+                    <div class="checkbox-option">
+                        <label>
+                            <input type="checkbox" id="chk-auto-wakeup" onchange="toggleAutoWakeup(this.checked)">
+                            <span>Automatisches Aufwecken aktivieren (bei PV-Überschuss & schlafendem Auto)</span>
+                        </label>
                     </div>
                     <p class="ip-feedback" id="ip-feedback-msg"></p>
                 </div>

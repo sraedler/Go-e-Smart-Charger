@@ -85,6 +85,12 @@ function syncConfigUI(cfg) {
         ipInput.value = cfg.goe_ip;
     }
 
+    // Auto Wakeup Checkbox
+    const chkAutoWakeup = document.getElementById("chk-auto-wakeup");
+    if (chkAutoWakeup) {
+        chkAutoWakeup.checked = cfg.auto_wakeup !== false;
+    }
+
     // Normal Ampere UI
     const normalAmp = cfg.normal_ampere || 16;
     document.querySelectorAll(".amp-btn").forEach(btn => {
@@ -233,6 +239,40 @@ function testGoeIp() {
         .catch(err => {
             feedback.innerText = `Verbindungsfehler: ${err.message}`;
             feedback.style.color = "#ff1744";
+        });
+}
+
+function toggleAutoWakeup(checked) {
+    currentConfig.auto_wakeup = checked;
+    saveConfigToServer({ auto_wakeup: checked });
+}
+
+function wakeupCar() {
+    const btn = document.getElementById("btn-wakeup-car");
+    if (!btn) return;
+
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Aufwecksignal wird gesendet...`;
+
+    fetch("/api/wakeup_car", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                btn.innerHTML = `<i class="fa-solid fa-check"></i> Aufweck-Impuls gesendet!`;
+                setTimeout(() => fetchStatus(), 3500);
+            } else {
+                btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Fehler: ${data.error || 'Fehlgeschlagen'}`;
+            }
+        })
+        .catch(err => {
+            btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Verbindungsfehler`;
+        })
+        .finally(() => {
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }, 5000);
         });
 }
 

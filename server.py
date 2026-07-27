@@ -30,7 +30,8 @@ default_config = {
     "solaredge_poll_seconds": 180,
     "phases_setting": "auto", # auto, 1, 3
     "server_port": 2009,
-    "midnight_reset": True
+    "midnight_reset": True,
+    "auto_wakeup": True
 }
 
 def load_config():
@@ -233,11 +234,23 @@ def set_goe_param(ip, params):
         except Exception as e_v1:
             return {"success": False, "error": f"v2 error: {e_v2}, v1 error: {e_v1}"}
 
+def wakeup_goe_car(ip):
+    """Triggers CP pulse (temporary pause + resume) to wake up sleeping EV."""
+    if not ip or ip.strip() == "":
+        return {"success": False, "error": "Keine IP angegeben"}
+    print(f"[Go-e] Sende CP-Aufweckimpuls an {ip}...")
+    res1 = set_goe_param(ip, {"frc": 1})
+    time.sleep(3)
+    res2 = set_goe_param(ip, {"frc": 0})
+    return {"success": True, "res_stop": res1, "res_start": res2}
+
 # --- Background Controller Loop ---
 def run_pv_controller():
     print("[PV-Controller] gestartet.")
     last_solaredge_fetch = 0
     last_reset_day = datetime.now().date()
+    last_auto_wakeup_time = 0
+    car_sleep_count = 0
     
     while True:
         try:
@@ -374,6 +387,21 @@ def run_pv_controller():
                     if not set_res["success"]:
                         msg += f" (Fehler beim Senden: {set_res.get('error')})"
 
+                # Auto-Wakeup check for sleeping vehicle (State 3/4 with 0W while charge is desired)
+                if cfg.get("auto_wakeup", True):
+                    car_st = system_status["goe"]["car_state"]
+                    chg_w = system_status["goe"]["charging_power_w"]
+                    if target_frc == 0 and available_w >= min_power and car_st in [3, 4] and chg_w == 0:
+                        car_sleep_count += 1
+                        if car_sleep_count >= 2 and (now - last_auto_wakeup_time) > 600:
+                            print(f"[PV-Controller] Auto-Aufwecken ausgelöst für schlafendes Auto (State {car_st})...")
+                            msg += " ⚡ (Auto schläft - CP-Aufweckimpuls gesendet)"
+                            wakeup_goe_car(goe_ip)
+                            last_auto_wakeup_time = now
+                            car_sleep_count = 0
+                    else:
+                        car_sleep_count = 0
+
             with state_lock:
                 system_status["controller"]["active_mode"] = mode
                 system_status["controller"]["target_ampere"] = target_amp
@@ -430,6 +458,12 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
             res = fetch_goe_status(ip)
             self.send_json_response(res)
 
+        elif path == "/api/wakeup_car":
+            with config_lock:
+                goe_ip = global_config.get("goe_ip", "")
+            res = wakeup_goe_car(goe_ip)
+            self.send_json_response(res)
+
         else:
             if path == "/":
                 self.path = "/index.html"
@@ -449,11 +483,17 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/api/config":
             with config_lock:
-                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting", "midnight_reset"]:
+                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting", "midnight_reset", "auto_wakeup"]:
                     if k in data:
                         global_config[k] = data[k]
                 save_config(global_config)
             self.send_json_response({"success": True, "config": global_config})
+
+        elif path == "/api/wakeup_car":
+            with config_lock:
+                goe_ip = global_config.get("goe_ip", "")
+            res = wakeup_goe_car(goe_ip)
+            self.send_json_response(res)
 
         elif path == "/api/force_poll":
             with config_lock:
