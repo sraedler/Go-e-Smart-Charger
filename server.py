@@ -29,7 +29,8 @@ default_config = {
     "max_pv_ampere": 16,
     "solaredge_poll_seconds": 180,
     "phases_setting": "auto", # auto, 1, 3
-    "server_port": 2009
+    "server_port": 2009,
+    "midnight_reset": True
 }
 
 def load_config():
@@ -236,9 +237,20 @@ def set_goe_param(ip, params):
 def run_pv_controller():
     print("[PV-Controller] gestartet.")
     last_solaredge_fetch = 0
+    last_reset_day = datetime.now().date()
     
     while True:
         try:
+            now_dt = datetime.now()
+            today = now_dt.date()
+            if today != last_reset_day:
+                last_reset_day = today
+                with config_lock:
+                    if global_config.get("midnight_reset", True) and global_config.get("mode") == "normal":
+                        global_config["mode"] = "pv"
+                        save_config(global_config)
+                        print(f"[{now_dt.strftime('%Y-%m-%d %H:%M:%S')}] [PV-Controller] Mitternachts-Reset: Lademodus von 'Normal Laden' auf 'PV Laden' zurückgesetzt.")
+
             now = time.time()
             with config_lock:
                 cfg = dict(global_config)
@@ -327,7 +339,7 @@ def run_pv_controller():
                 if available_w < min_power:
                     target_frc = 1
                     target_amp = min_pv_amp
-                    msg = f"PV Laden pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W (Überschuss: {int(pv_surplus_w)} W, Netz-Toleranz: {int(pv_threshold)} W)"
+                    msg = f"PV Laden pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W (Überschuss: {int(pv_surplus_w)} W, Netz-Toleranz: {round(pv_threshold/1000.0, 1)} kW)"
                 else:
                     target_frc = 0
                     calculated_amp = int(available_w / w_per_amp)
@@ -428,7 +440,7 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/api/config":
             with config_lock:
-                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting"]:
+                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting", "midnight_reset"]:
                     if k in data:
                         global_config[k] = data[k]
                 save_config(global_config)

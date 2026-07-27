@@ -76,7 +76,7 @@ function syncConfigUI(cfg) {
     const slider = document.getElementById("threshold-slider");
     if (document.activeElement !== slider) {
         slider.value = thresh;
-        document.getElementById("threshold-val-num").innerText = thresh;
+        updateThresholdDisplay(thresh);
     }
 
     // Go-e IP Input
@@ -179,7 +179,8 @@ function setMode(newMode) {
 }
 
 function updateThresholdDisplay(val) {
-    document.getElementById("threshold-val-num").innerText = val;
+    const numWatt = parseFloat(val) || 0;
+    document.getElementById("threshold-val-num").innerText = (numWatt / 1000.0).toFixed(1);
 }
 
 function saveThreshold(val) {

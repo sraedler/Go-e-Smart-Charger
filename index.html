@@ -59,7 +59,7 @@
                         <div class="mode-icon"><i class="fa-solid fa-plug-circle-bolt"></i></div>
                         <div class="mode-info">
                             <span class="mode-title">Normal Laden</span>
-                            <span class="mode-desc">Maximale Ladeleistung (Netzbezug erlaubt)</span>
+                            <span class="mode-desc">Maximale Ladeleistung (Reset um 00:00 auf PV)</span>
                         </div>
                     </button>
                     <button class="mode-btn active" id="btn-mode-pv" onclick="setMode('pv')">
@@ -78,26 +78,30 @@
                             <label for="threshold-slider" class="threshold-label">
                                 <i class="fa-solid fa-gauge-high"></i> Netzbezug-Toleranz (Threshold)
                             </label>
-                            <p class="field-hint">Wie viel Watt dürfen maximal zusätzlich aus dem Netz bezogen werden?</p>
+                            <p class="field-hint">Wie viel kW dürfen maximal zusätzlich aus dem Netz bezogen werden?</p>
                         </div>
                         <div class="threshold-value-display">
-                            <span id="threshold-val-num">0</span> <small>W</small>
+                            <span id="threshold-val-num">0.0</span> <small>kW</small>
                         </div>
                     </div>
                     <div class="slider-container">
-                        <input type="range" id="threshold-slider" min="0" max="3000" step="100" value="0" oninput="updateThresholdDisplay(this.value)" onchange="saveThreshold(this.value)">
+                        <input type="range" id="threshold-slider" min="0" max="10000" step="100" value="0" oninput="updateThresholdDisplay(this.value)" onchange="saveThreshold(this.value)">
                         <div class="slider-ticks">
-                            <span>0 W (Reine PV)</span>
-                            <span>1000 W</span>
-                            <span>2000 W</span>
-                            <span>3000 W</span>
+                            <span>0 kW (Reine PV)</span>
+                            <span>2.5 kW</span>
+                            <span>5.0 kW</span>
+                            <span>7.5 kW</span>
+                            <span>10.0 kW</span>
                         </div>
                     </div>
                     <div class="quick-presets">
                         <span class="preset-title">Presets:</span>
-                        <button class="preset-chip" onclick="setThresholdPreset(0)">0 W (Reines PV)</button>
-                        <button class="preset-chip" onclick="setThresholdPreset(500)">500 W (Leichtes Wölkchen)</button>
-                        <button class="preset-chip" onclick="setThresholdPreset(1000)">1000 W (Kombiladen)</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(0)">0 kW (Reine PV)</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(500)">0.5 kW</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(1000)">1.0 kW</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(3000)">3.0 kW</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(5000)">5.0 kW</button>
+                        <button class="preset-chip" onclick="setThresholdPreset(10000)">10.0 kW</button>
                     </div>
                 </div>
 
@@ -108,6 +112,9 @@
                         <button class="amp-btn" onclick="setNormalAmpere(6)">6 A (4.1 kW)</button>
                         <button class="amp-btn" onclick="setNormalAmpere(10)">10 A (6.9 kW)</button>
                         <button class="amp-btn active" onclick="setNormalAmpere(16)">16 A (11 kW)</button>
+                    </div>
+                    <div class="midnight-reset-badge">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Automatischer Reset auf PV-Laden um 00:00 Uhr
                     </div>
                 </div>
 
