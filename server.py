@@ -304,13 +304,13 @@ def set_goe_param(ip, params):
             return {"success": False, "error": f"v2 error: {e_v2}, v1 error: {e_v1}"}
 
 def wakeup_goe_car(ip):
-    """Triggers CP pulse (temporary pause + resume) to wake up sleeping EV."""
+    """Triggers CP pulse (temporary pause + force resume) to wake up sleeping EV (e.g. BMW i4)."""
     if not ip or ip.strip() == "":
         return {"success": False, "error": "Keine IP angegeben"}
-    print(f"[Go-e] Sende CP-Aufweckimpuls an {ip}...")
+    print(f"[Go-e] Sende CP-Aufweckimpuls (Force ON) an {ip}...")
     res1 = set_goe_param(ip, {"frc": 1})
     time.sleep(3)
-    res2 = set_goe_param(ip, {"frc": 0})
+    res2 = set_goe_param(ip, {"frc": 2})  # Force ON (Schaltet Laden für BMW i4 / VAG / Tesla aktiv ein)
     return {"success": True, "res_stop": res1, "res_start": res2}
 
 # --- Background Controller Loop ---
@@ -321,6 +321,8 @@ def run_pv_controller():
     last_reset_day = datetime.now().date()
     last_auto_wakeup_time = 0
     car_sleep_count = 0
+    last_charging_start_time = 0
+    is_charging_session_active = False
     
     while True:
         try:
@@ -414,9 +416,9 @@ def run_pv_controller():
             msg = ""
 
             if mode == "normal":
-                target_frc = 0
+                target_frc = 2  # Force On für BMW i4 Kompatibilität
                 target_amp = normal_amp
-                msg = f"Normalmodus: Laden mit festen {normal_amp} A"
+                msg = f"Normalmodus: Laden mit festen {normal_amp} A aktiv"
             elif mode == "pv_boerse":
                 # Börsenoptimiertes PV Laden
                 weekday = now_dt.weekday() # 0=Mo, 1=Di, 2=Mi, 3=Do, 4=Fr, 5=Sa, 6=So
@@ -454,7 +456,7 @@ def run_pv_controller():
                     target_amp = min_pv_amp
                     msg = f"Börsenoptimiert pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W"
                 else:
-                    target_frc = 0
+                    target_frc = 2  # Force On für Aktivierung am Fahrzeug
                     curr_tariff_ct = system_status["vkw_tariff"].get("current_price_ct", 0.0)
                     prices = [p["vkw_tariff_ct_kwh"] for p in system_status["vkw_tariff"].get("prices", [])]
                     avg_tariff_ct = (sum(prices) / len(prices)) if prices else curr_tariff_ct
@@ -463,16 +465,16 @@ def run_pv_controller():
                         if curr_tariff_ct < 0:
                             # Negativer Verkaufspreis -> Maximales Laden um Einspeisegebühr zu vermeiden
                             target_amp = max_pv_amp
-                            msg = f"Börsenoptimiert: Negativer Tarif ({curr_tariff_ct:.2f} ct) → Max. Laden ({target_amp} A) um Einspeisegebühren zu vermeiden"
+                            msg = f"Börsenoptimiert: Negativer Tarif ({curr_tariff_ct:.2f} ct) → Max. Laden ({target_amp} A)"
                         elif curr_tariff_ct > avg_tariff_ct:
                             # Hoher Verkaufspreis -> Ladestrom auf Minimum drosseln für max. Netzeinspeisung
                             target_amp = min_pv_amp
-                            msg = f"Börsenoptimiert: Hoher Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh > Schnitt {avg_tariff_ct:.2f} ct) → Ladestrom gedrosselt ({target_amp} A) für max. Einspeiseertrag"
+                            msg = f"Börsenoptimiert: Hoher Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh > Schnitt {avg_tariff_ct:.2f} ct) → Ladestrom gedrosselt ({target_amp} A)"
                         else:
                             # Geringer Verkaufspreis -> Hoher Eigenverbrauch ins Auto
                             calculated_amp = int(available_w / w_per_amp)
                             target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
-                            msg = f"Börsenoptimiert: Geringer Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh ≤ Schnitt {avg_tariff_ct:.2f} ct) → Eigenverbrauch mit {target_amp} A präferiert"
+                            msg = f"Börsenoptimiert: Geringer Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh ≤ Schnitt {avg_tariff_ct:.2f} ct) → Eigenverbrauch mit {target_amp} A"
                     else:
                         # Außerhalb des Zeitfensters: Standard PV-Laden
                         calculated_amp = int(available_w / w_per_amp)
@@ -502,10 +504,29 @@ def run_pv_controller():
                     target_amp = min_pv_amp
                     msg = f"PV Laden pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W (Überschuss: {int(pv_surplus_w)} W, Netz-Toleranz: {round(pv_threshold/1000.0, 1)} kW)"
                 else:
-                    target_frc = 0
+                    target_frc = 2  # Force On für Aktivierung am Fahrzeug
                     calculated_amp = int(available_w / w_per_amp)
                     target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
                     msg = f"PV Laden aktiv: {target_amp} A ({'3-phasig' if target_psm==2 else '1-phasig'}). Verfügbar: {int(available_w)} W"
+
+            # 5-Minuten Mindestlaufzeit-Schutz (300 Sekunden):
+            # Wenn das Laden gestartet wird, darf es frühestens nach 5 Minuten wieder pausiert werden.
+            MIN_RUN_TIME_SEC = 300
+            if target_frc in [0, 2]:
+                if not is_charging_session_active:
+                    is_charging_session_active = True
+                    last_charging_start_time = now
+                    print(f"[PV-Controller] Ladevorgang gestartet um {now_dt.strftime('%H:%M:%S')}. 5-Minuten Mindestlaufzeit aktiviert.")
+            elif target_frc == 1 and is_charging_session_active:
+                elapsed_charging = now - last_charging_start_time
+                if elapsed_charging < MIN_RUN_TIME_SEC:
+                    remaining_sec = int(MIN_RUN_TIME_SEC - elapsed_charging)
+                    target_frc = 2  # Mindestlaufzeit schützt vor vorzeitigem Ausschalten
+                    target_amp = min_pv_amp  # Leistung dynamisch auf Minimum anpassen
+                    msg += f" (⏱️ 5-Min. Mindestlaufzeit aktiv: noch {remaining_sec}s bis Abschaltung erlaubt)"
+                else:
+                    is_charging_session_active = False
+                    print(f"[PV-Controller] 5-Minuten Mindestlaufzeit abgelaufen. Ladevorgang kann jetzt pausiert werden.")
 
             if goe_ip and system_status["goe"]["connected"]:
                 curr_amp = system_status["goe"]["ampere"]

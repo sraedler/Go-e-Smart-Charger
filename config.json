@@ -2,7 +2,7 @@
   "goe_ip": "192.168.100.67",
   "solaredge_api_key": "UAE8KFFWY50TYUBLMLHASRBYHI965DC1",
   "solaredge_site_id": "4353282",
-  "mode": "pv_boerse",
+  "mode": "normal",
   "pv_threshold_watt": 0,
   "normal_ampere": 16,
   "min_pv_ampere": 6,
