@@ -93,8 +93,77 @@ system_status = {
         "status_message": "System startet...",
         "last_control_time": None
     },
+    "vkw_tariff": {
+        "current_price_ct": 0.0,
+        "epex_price_ct": 0.0,
+        "deduction_ct": 0.60,
+        "current_slot": "--:--",
+        "min_price_ct": 0.0,
+        "max_price_ct": 0.0,
+        "last_update": None,
+        "prices": []
+    },
     "history": []
 }
+
+# --- VKW Dynamic Feed-in Tariff Fetcher ---
+def fetch_vkw_tariff_data():
+    try:
+        url = "https://api.awattar.at/v1/marketdata"
+        req = urllib.request.Request(url, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8')).get('data', [])
+        
+        vkw_deduction_ct = 0.60  # 0.60 ct/kWh VKW Abschlag
+        result = []
+        now_ms = int(time.time() * 1000)
+        current_item = None
+        
+        prices_list = []
+        for item in data:
+            start_ms = item['start_timestamp']
+            end_ms = item['end_timestamp']
+            market_eur_mwh = float(item.get('marketprice', 0))
+            epex_ct_kwh = market_eur_mwh / 10.0
+            vkw_tariff_ct_kwh = round(epex_ct_kwh - vkw_deduction_ct, 3)
+            
+            start_dt = datetime.fromtimestamp(start_ms / 1000.0)
+            end_dt = datetime.fromtimestamp(end_ms / 1000.0)
+            
+            entry = {
+                "start": start_dt.strftime("%H:%M"),
+                "end": end_dt.strftime("%H:%M"),
+                "date": start_dt.strftime("%d.%m."),
+                "timestamp": start_ms,
+                "epex_ct_kwh": round(epex_ct_kwh, 3),
+                "vkw_tariff_ct_kwh": vkw_tariff_ct_kwh
+            }
+            result.append(entry)
+            prices_list.append(vkw_tariff_ct_kwh)
+            
+            if start_ms <= now_ms < end_ms:
+                current_item = entry
+
+        if not current_item and result:
+            current_item = result[0]
+            
+        min_price = min(prices_list) if prices_list else 0
+        max_price = max(prices_list) if prices_list else 0
+        
+        return {
+            "success": True,
+            "current_price_ct": current_item["vkw_tariff_ct_kwh"] if current_item else 0.0,
+            "epex_price_ct": current_item["epex_ct_kwh"] if current_item else 0.0,
+            "deduction_ct": vkw_deduction_ct,
+            "current_slot": f"{current_item['start']} - {current_item['end']}" if current_item else "--:--",
+            "min_price_ct": min_price,
+            "max_price_ct": max_price,
+            "last_update": datetime.now().strftime("%H:%M:%S"),
+            "prices": result
+        }
+    except Exception as e:
+        print(f"[VKW-Tariff] Fehler beim Abrufen der Börsenpreise: {e}")
+        return {"success": False, "error": str(e)}
 
 # --- SolarEdge API Fetcher ---
 def fetch_solaredge_data(api_key, site_id):
@@ -248,6 +317,7 @@ def wakeup_goe_car(ip):
 def run_pv_controller():
     print("[PV-Controller] gestartet.")
     last_solaredge_fetch = 0
+    last_vkw_fetch = 0
     last_reset_day = datetime.now().date()
     last_auto_wakeup_time = 0
     car_sleep_count = 0
@@ -261,7 +331,7 @@ def run_pv_controller():
                 with config_lock:
                     if global_config.get("midnight_reset", True):
                         reset_changes = []
-                        if global_config.get("mode") != "pv":
+                        if global_config.get("mode") == "normal":
                             global_config["mode"] = "pv"
                             reset_changes.append("Lademodus -> PV Laden")
                         if global_config.get("pv_threshold_watt", 0) != 0:
@@ -303,6 +373,14 @@ def run_pv_controller():
                         system_status["solaredge"]["connected"] = False
                 last_solaredge_fetch = now
 
+            if now - last_vkw_fetch >= 900: # Every 15 minutes
+                print("[PV-Controller] Hole VKW Einspeisetarif & Börsenpreise...")
+                vkw_res = fetch_vkw_tariff_data()
+                with state_lock:
+                    if vkw_res["success"]:
+                        system_status["vkw_tariff"] = vkw_res
+                last_vkw_fetch = now
+
             goe_res = fetch_goe_status(goe_ip)
             with state_lock:
                 if goe_res["success"]:
@@ -339,6 +417,67 @@ def run_pv_controller():
                 target_frc = 0
                 target_amp = normal_amp
                 msg = f"Normalmodus: Laden mit festen {normal_amp} A"
+            elif mode == "pv_boerse":
+                # Börsenoptimiertes PV Laden
+                weekday = now_dt.weekday() # 0=Mo, 1=Di, 2=Mi, 3=Do, 4=Fr, 5=Sa, 6=So
+                hour = now_dt.hour
+
+                # Zeitfenster-Prämisse: Mo-Do 07:00-17:00, Fr 07:00-14:00, Sa-So ganztägig
+                in_schedule = False
+                if weekday in [0, 1, 2, 3]:
+                    in_schedule = (7 <= hour < 17)
+                elif weekday == 4:
+                    in_schedule = (7 <= hour < 14)
+                else:
+                    in_schedule = True # Wochenende
+
+                if phases_setting == "1":
+                    w_per_amp = 230.0
+                    min_power = 6.0 * 230.0
+                    target_psm = 1
+                elif phases_setting == "3":
+                    w_per_amp = 690.0
+                    min_power = 6.0 * 690.0
+                    target_psm = 2
+                else:
+                    if available_w >= 4140.0:
+                        w_per_amp = 690.0
+                        min_power = 4140.0
+                        target_psm = 2
+                    else:
+                        w_per_amp = 230.0
+                        min_power = 1380.0
+                        target_psm = 1
+
+                if available_w < min_power:
+                    target_frc = 1
+                    target_amp = min_pv_amp
+                    msg = f"Börsenoptimiert pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W"
+                else:
+                    target_frc = 0
+                    curr_tariff_ct = system_status["vkw_tariff"].get("current_price_ct", 0.0)
+                    prices = [p["vkw_tariff_ct_kwh"] for p in system_status["vkw_tariff"].get("prices", [])]
+                    avg_tariff_ct = (sum(prices) / len(prices)) if prices else curr_tariff_ct
+
+                    if in_schedule:
+                        if curr_tariff_ct < 0:
+                            # Negativer Verkaufspreis -> Maximales Laden um Einspeisegebühr zu vermeiden
+                            target_amp = max_pv_amp
+                            msg = f"Börsenoptimiert: Negativer Tarif ({curr_tariff_ct:.2f} ct) → Max. Laden ({target_amp} A) um Einspeisegebühren zu vermeiden"
+                        elif curr_tariff_ct > avg_tariff_ct:
+                            # Hoher Verkaufspreis -> Ladestrom auf Minimum drosseln für max. Netzeinspeisung
+                            target_amp = min_pv_amp
+                            msg = f"Börsenoptimiert: Hoher Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh > Schnitt {avg_tariff_ct:.2f} ct) → Ladestrom gedrosselt ({target_amp} A) für max. Einspeiseertrag"
+                        else:
+                            # Geringer Verkaufspreis -> Hoher Eigenverbrauch ins Auto
+                            calculated_amp = int(available_w / w_per_amp)
+                            target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
+                            msg = f"Börsenoptimiert: Geringer Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh ≤ Schnitt {avg_tariff_ct:.2f} ct) → Eigenverbrauch mit {target_amp} A präferiert"
+                    else:
+                        # Außerhalb des Zeitfensters: Standard PV-Laden
+                        calculated_amp = int(available_w / w_per_amp)
+                        target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
+                        msg = f"Börsenoptimiert (Außerhalb Zeitfenster): Standard PV-Laden mit {target_amp} A aktiv"
             else:
                 if phases_setting == "1":
                     w_per_amp = 230.0
@@ -462,6 +601,10 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
             with config_lock:
                 goe_ip = global_config.get("goe_ip", "")
             res = wakeup_goe_car(goe_ip)
+            self.send_json_response(res)
+
+        elif path == "/api/vkw_tariff":
+            res = fetch_vkw_tariff_data()
             self.send_json_response(res)
 
         else:

@@ -33,6 +33,9 @@ function fetchStatus() {
             updateSolarEdgeUI(data.solaredge);
             updateGoEUI(data.goe);
             updateControllerUI(data.controller);
+            if (data.vkw_tariff) {
+                updateVkwTariffUI(data.vkw_tariff, data.solaredge ? data.solaredge.grid_power_w : 0);
+            }
             
             document.getElementById("system-status-text").innerText = "Aktiv & Synchronisiert";
             document.getElementById("system-status-badge").style.borderColor = "rgba(0, 230, 118, 0.4)";
@@ -48,7 +51,10 @@ function fetchStatus() {
 function syncConfigUI(cfg) {
     // Mode UI
     const mode = cfg.mode || "pv";
-    const modeText = mode === "pv" ? "PV-Laden" : "Normal Laden";
+    let modeText = "PV-Laden";
+    if (mode === "normal") modeText = "Normal Laden";
+    else if (mode === "pv_boerse") modeText = "PV Börsenoptimiert";
+
     document.getElementById("current-mode-label").innerText = modeText;
     
     const mobileStickyMode = document.getElementById("mobile-sticky-mode");
@@ -56,19 +62,30 @@ function syncConfigUI(cfg) {
     
     const btnNormal = document.getElementById("btn-mode-normal");
     const btnPv = document.getElementById("btn-mode-pv");
+    const btnPvBoerse = document.getElementById("btn-mode-pv-boerse");
     const pvBox = document.getElementById("pv-threshold-box");
     const normalBox = document.getElementById("normal-setting-box");
+    const boerseBanner = document.getElementById("boerse-schedule-banner");
 
-    if (mode === "pv") {
-        btnPv.classList.add("active");
-        btnNormal.classList.remove("active");
+    btnNormal.classList.remove("active");
+    btnPv.classList.remove("active");
+    if (btnPvBoerse) btnPvBoerse.classList.remove("active");
+
+    if (mode === "pv_boerse") {
+        if (btnPvBoerse) btnPvBoerse.classList.add("active");
         pvBox.style.display = "block";
         normalBox.style.display = "none";
+        if (boerseBanner) boerseBanner.style.display = "flex";
+    } else if (mode === "pv") {
+        btnPv.classList.add("active");
+        pvBox.style.display = "block";
+        normalBox.style.display = "none";
+        if (boerseBanner) boerseBanner.style.display = "none";
     } else {
         btnNormal.classList.add("active");
-        btnPv.classList.remove("active");
         pvBox.style.display = "none";
         normalBox.style.display = "block";
+        if (boerseBanner) boerseBanner.style.display = "none";
     }
 
     // Threshold UI
@@ -176,6 +193,128 @@ function updateControllerUI(ctrl) {
     if (ctrl.status_message) {
         bannerText.innerText = ctrl.status_message;
     }
+}
+
+// Update VKW Dynamic Feed-in Tariff & Chart UI
+let tariffChartInstance = null;
+
+function updateVkwTariffUI(vkw, gridW) {
+    if (!vkw) return;
+
+    const currPrice = parseFloat(vkw.current_price_ct || 0);
+    const epexPrice = parseFloat(vkw.epex_price_ct || 0);
+    const deduction = parseFloat(vkw.deduction_ct || 0.60);
+
+    const priceEl = document.getElementById("val-vkw-current-price");
+    if (priceEl) {
+        priceEl.innerText = currPrice.toFixed(2);
+        priceEl.style.color = currPrice < 0 ? "#ff1744" : "#00e676";
+    }
+
+    const formulaEl = document.getElementById("val-vkw-formula");
+    if (formulaEl) {
+        formulaEl.innerText = `EPEX: ${epexPrice.toFixed(2)} ct/kWh − ${deduction.toFixed(2)} ct VKW-Abschlag (Netto)`;
+    }
+
+    const exportKw = gridW > 0 ? (gridW / 1000.0) : 0;
+    const earningEurH = exportKw * (currPrice / 100.0);
+    const earningEl = document.getElementById("val-vkw-current-earning");
+    const earningSub = document.getElementById("val-vkw-earning-subtext");
+
+    if (earningEl) {
+        earningEl.innerText = `${earningEurH >= 0 ? '+' : ''}${earningEurH.toFixed(2)} €/h`;
+        earningEl.style.color = earningEurH < 0 ? "#ff1744" : "#00e676";
+    }
+    if (earningSub) {
+        earningSub.innerText = `bei ${exportKw.toFixed(2)} kW Netzeinspeisung`;
+    }
+
+    const maxEl = document.getElementById("val-vkw-max-price");
+    const minEl = document.getElementById("val-vkw-min-price");
+    const slotEl = document.getElementById("val-vkw-slot-time");
+
+    if (maxEl) maxEl.innerText = `${(vkw.max_price_ct || 0).toFixed(2)} ct/kWh`;
+    if (minEl) minEl.innerText = `${(vkw.min_price_ct || 0).toFixed(2)} ct/kWh`;
+    if (slotEl) slotEl.innerText = vkw.current_slot || "--:--";
+
+    if (vkw.prices && vkw.prices.length > 0) {
+        renderTariffChart(vkw.prices);
+    }
+}
+
+function renderTariffChart(prices) {
+    if (!prices || prices.length === 0) return;
+
+    const canvas = document.getElementById("tariffChart");
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    const labels = prices.map(p => p.start);
+    const epexData = prices.map(p => p.epex_ct_kwh);
+    const vkwData = prices.map(p => p.vkw_tariff_ct_kwh);
+
+    if (tariffChartInstance) {
+        tariffChartInstance.data.labels = labels;
+        tariffChartInstance.data.datasets[0].data = epexData;
+        tariffChartInstance.data.datasets[1].data = vkwData;
+        tariffChartInstance.update();
+        return;
+    }
+
+    if (typeof Chart === 'undefined') return;
+
+    tariffChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'EPEX Spot AT (ct/kWh)',
+                    data: epexData,
+                    backgroundColor: 'rgba(41, 182, 246, 0.25)',
+                    borderColor: '#29b6f6',
+                    borderWidth: 1.5,
+                    borderRadius: 4
+                },
+                {
+                    label: 'VKW Auszahlung (ct/kWh)',
+                    data: vkwData,
+                    backgroundColor: prices.map(p => p.vkw_tariff_ct_kwh < 0 ? 'rgba(255, 23, 68, 0.7)' : 'rgba(0, 230, 118, 0.75)'),
+                    borderColor: prices.map(p => p.vkw_tariff_ct_kwh < 0 ? '#ff1744' : '#00e676'),
+                    borderWidth: 2,
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.raw.toFixed(2)} ct/kWh`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#94a3b8', font: { family: 'Outfit', size: 10 } }
+                },
+                y: {
+                    grid: { color: 'rgba(255, 255, 255, 0.08)' },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { family: 'Outfit', size: 11 },
+                        callback: function(val) { return val + ' ct'; }
+                    }
+                }
+            }
+        }
+    });
 }
 
 // Actions

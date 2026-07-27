@@ -239,9 +239,32 @@ body {
 
 .mode-switch-group {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 12px;
     margin-bottom: 20px;
+}
+
+.boerse-schedule-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(41, 182, 246, 0.08);
+    border: 1px dashed rgba(41, 182, 246, 0.3);
+    border-radius: var(--radius-md);
+    font-size: 0.82rem;
+    color: var(--text-main);
+    margin-bottom: 16px;
+}
+
+.boerse-schedule-banner i {
+    font-size: 1.2rem;
+    color: #29b6f6;
+}
+
+.boerse-schedule-banner strong {
+    display: block;
+    color: #29b6f6;
 }
 
 .mode-btn {
@@ -845,4 +868,146 @@ input[type=range]::-webkit-slider-thumb:active {
     height: 18px;
     accent-color: var(--primary);
     cursor: pointer;
+}
+
+/* VKW Tariff Card & Chart Styling */
+.tariff-tag {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    background: rgba(0, 230, 118, 0.15);
+    color: #00e676;
+    border: 1px solid rgba(0, 230, 118, 0.3);
+    border-radius: 20px;
+}
+
+.tariff-hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.tariff-hero-box {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.tariff-hero-box.main-hero {
+    background: linear-gradient(135deg, rgba(0, 230, 118, 0.08) 0%, rgba(41, 182, 246, 0.05) 100%);
+    border-color: rgba(0, 230, 118, 0.25);
+}
+
+.t-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.t-val-group {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 4px 0;
+}
+
+.t-val {
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #00e676;
+}
+
+.t-val.highlight-green {
+    color: #00e676;
+}
+
+.t-unit {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+}
+
+.t-subtext {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.stat-hero {
+    gap: 8px;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.stat-row strong {
+    color: var(--text-main);
+}
+
+/* Chart Container */
+.chart-container {
+    background: rgba(11, 15, 25, 0.5);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.chart-header h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chart-legend {
+    display: flex;
+    gap: 14px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.color-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.color-dot.epex {
+    background: #29b6f6;
+}
+
+.color-dot.vkw {
+    background: #00e676;
+}
+
+.canvas-wrapper {
+    position: relative;
+    height: 240px;
+    width: 100%;
 }

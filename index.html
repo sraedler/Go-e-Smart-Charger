@@ -14,6 +14,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for tariff visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -59,16 +61,32 @@
                         <div class="mode-icon"><i class="fa-solid fa-plug-circle-bolt"></i></div>
                         <div class="mode-info">
                             <span class="mode-title">Normal Laden</span>
-                            <span class="mode-desc">Maximale Ladeleistung (Reset um 00:00 auf PV)</span>
+                            <span class="mode-desc">Maximale Ladeleistung (Reset um 00:00)</span>
                         </div>
                     </button>
                     <button class="mode-btn active" id="btn-mode-pv" onclick="setMode('pv')">
                         <div class="mode-icon"><i class="fa-solid fa-solar-panel"></i></div>
                         <div class="mode-info">
                             <span class="mode-title">PV Laden</span>
-                            <span class="mode-desc">Intelligentes Überschussladen aus Sonnenenergie</span>
+                            <span class="mode-desc">Standard Überschussladen aus Sonnenenergie</span>
                         </div>
                     </button>
+                    <button class="mode-btn" id="btn-mode-pv-boerse" onclick="setMode('pv_boerse')">
+                        <div class="mode-icon"><i class="fa-solid fa-chart-line"></i></div>
+                        <div class="mode-info">
+                            <span class="mode-title">PV Börsenoptimiert</span>
+                            <span class="mode-desc">Hoher Tarif = Einspeisen, Niedriger Tarif = Laden</span>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- Schedule Info Badge for PV Börsenoptimiert Mode -->
+                <div class="boerse-schedule-banner" id="boerse-schedule-banner" style="display: none;">
+                    <i class="fa-solid fa-calendar-clock"></i>
+                    <div>
+                        <strong>Optimierung aktiv:</strong>
+                        <span>Mo–Do: 07:00–17:00 Uhr | Fr: 07:00–14:00 Uhr | Sa–So: Ganztägig</span>
+                    </div>
                 </div>
 
                 <!-- PV Threshold Configuration (Visible in PV Mode) -->
@@ -170,6 +188,62 @@
                     <div class="summary-item">
                         <span class="sum-label">Verfügbar (inkl. Threshold):</span>
                         <span class="sum-value highlight" id="val-effective-available">0 W</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VKW Dynamic Feed-in Tariff & Chart Card -->
+            <section class="card tariff-card glass-effect">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-chart-line"></i> VKW Einspeisetarif Dynamisch</h2>
+                    <span class="tariff-tag" id="vkw-tariff-time-tag">EPEX Spot AT - 0.60 ct</span>
+                </div>
+
+                <div class="tariff-hero-grid">
+                    <div class="tariff-hero-box main-hero">
+                        <span class="t-label">Aktuelle Einspeisevergütung</span>
+                        <div class="t-val-group">
+                            <span class="t-val" id="val-vkw-current-price">--</span>
+                            <span class="t-unit">ct/kWh</span>
+                        </div>
+                        <span class="t-subtext" id="val-vkw-formula">EPEX Spot AT − 0,60 ct/kWh VKW-Abschlag (Netto)</span>
+                    </div>
+
+                    <div class="tariff-hero-box secondary-hero">
+                        <span class="t-label">Einspeiseertrag Live</span>
+                        <div class="t-val-group">
+                            <span class="t-val highlight-green" id="val-vkw-current-earning">0.00 €/h</span>
+                        </div>
+                        <span class="t-subtext" id="val-vkw-earning-subtext">bei 0.0 kW Netzeinspeisung</span>
+                    </div>
+
+                    <div class="tariff-hero-box stat-hero">
+                        <div class="stat-row">
+                            <span>Tages-Höchstpreis:</span>
+                            <strong id="val-vkw-max-price">-- ct/kWh</strong>
+                        </div>
+                        <div class="stat-row">
+                            <span>Tages-Tiefstpreis:</span>
+                            <strong id="val-vkw-min-price">-- ct/kWh</strong>
+                        </div>
+                        <div class="stat-row">
+                            <span>Zeitfenster:</span>
+                            <strong id="val-vkw-slot-time">--:--</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Price Chart Container -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3><i class="fa-solid fa-chart-bar"></i> Börsenpreise EPEX Spot AT vs. VKW Einspeisetarif</h3>
+                        <span class="chart-legend">
+                            <span class="legend-item"><span class="color-dot epex"></span> EPEX Spot</span>
+                            <span class="legend-item"><span class="color-dot vkw"></span> VKW Auszahlung</span>
+                        </span>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="tariffChart"></canvas>
                     </div>
                 </div>
             </section>
