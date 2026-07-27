@@ -304,14 +304,16 @@ def set_goe_param(ip, params):
             return {"success": False, "error": f"v2 error: {e_v2}, v1 error: {e_v1}"}
 
 def wakeup_goe_car(ip):
-    """Triggers CP pulse (temporary pause + force resume) to wake up sleeping EV (e.g. BMW i4)."""
+    """Triggers CP pulse (1 -> 0 -> 2 sequence) to wake up sleeping EV without manual car key/app intervention."""
     if not ip or ip.strip() == "":
         return {"success": False, "error": "Keine IP angegeben"}
-    print(f"[Go-e] Sende CP-Aufweckimpuls (Force ON) an {ip}...")
+    print(f"[Go-e] Sende 3-Stufen CP-Aufweckimpuls (frc=1 -> frc=0 -> frc=2) an {ip}...")
     res1 = set_goe_param(ip, {"frc": 1})
-    time.sleep(3)
-    res2 = set_goe_param(ip, {"frc": 2})  # Force ON (Schaltet Laden für BMW i4 / VAG / Tesla aktiv ein)
-    return {"success": True, "res_stop": res1, "res_start": res2}
+    time.sleep(4)
+    res2 = set_goe_param(ip, {"frc": 0})
+    time.sleep(4)
+    res3 = set_goe_param(ip, {"frc": 2})  # Force ON (Aktiviert das Schütz im Fahrzeug)
+    return {"success": True, "res_stop": res1, "res_neutral": res2, "res_start": res3}
 
 # --- Background Controller Loop ---
 def run_pv_controller():
