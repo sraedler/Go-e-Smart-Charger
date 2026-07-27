@@ -3,7 +3,7 @@
   "solaredge_api_key": "UAE8KFFWY50TYUBLMLHASRBYHI965DC1",
   "solaredge_site_id": "4353282",
   "mode": "pv_boerse",
-  "pv_threshold_watt": 500,
+  "pv_threshold_watt": 1600,
   "normal_ampere": 16,
   "min_pv_ampere": 6,
   "max_pv_ampere": 16,
