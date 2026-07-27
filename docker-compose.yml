@@ -3,7 +3,6 @@ name: goe-pv-steuerung
 services:
   goe-pv-steuerung:
     build: .
-    container_name: goe_pv_steuerung
     restart: unless-stopped
     ports:
       - "2009:2009"
