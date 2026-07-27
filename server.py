@@ -552,7 +552,7 @@ def run_pv_controller():
                 if cfg.get("auto_wakeup", True):
                     car_st = system_status["goe"]["car_state"]
                     chg_w = system_status["goe"]["charging_power_w"]
-                    if target_frc == 0 and available_w >= min_power and car_st in [3, 4] and chg_w == 0:
+                    if target_frc in [0, 2] and available_w >= min_power and car_st in [3, 4] and chg_w == 0:
                         car_sleep_count += 1
                         if car_sleep_count >= 2 and (now - last_auto_wakeup_time) > 600:
                             print(f"[PV-Controller] Auto-Aufwecken ausgelöst für schlafendes Auto (State {car_st})...")
