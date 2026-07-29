@@ -116,6 +116,22 @@ function syncConfigUI(cfg) {
             btn.classList.add("active");
         }
     });
+
+    // Smoothing & Delay UI
+    const selOffDelay = document.getElementById("select-off-delay");
+    if (selOffDelay && document.activeElement !== selOffDelay) {
+        selOffDelay.value = cfg.off_delay_seconds !== undefined ? cfg.off_delay_seconds : 180;
+    }
+
+    const selMinPause = document.getElementById("select-min-pause");
+    if (selMinPause && document.activeElement !== selMinPause) {
+        selMinPause.value = cfg.min_pause_seconds !== undefined ? cfg.min_pause_seconds : 120;
+    }
+
+    const chkSmoothing = document.getElementById("chk-enable-smoothing");
+    if (chkSmoothing && document.activeElement !== chkSmoothing) {
+        chkSmoothing.checked = cfg.enable_smoothing !== false;
+    }
 }
 
 // Update SolarEdge Solar & Power Flow UI
@@ -429,4 +445,16 @@ function saveConfigToServer(patch) {
         }
     })
     .catch(err => console.error("Fehler beim Speichern der Konfiguration:", err));
+}
+
+function saveSmoothingConfig() {
+    const offDelay = parseInt(document.getElementById("select-off-delay").value, 10);
+    const minPause = parseInt(document.getElementById("select-min-pause").value, 10);
+    const enableSmoothing = document.getElementById("chk-enable-smoothing").checked;
+
+    saveConfigToServer({
+        off_delay_seconds: offDelay,
+        min_pause_seconds: minPause,
+        enable_smoothing: enableSmoothing
+    });
 }

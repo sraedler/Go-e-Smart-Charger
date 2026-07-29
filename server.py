@@ -31,7 +31,10 @@ default_config = {
     "phases_setting": "auto", # auto, 1, 3
     "server_port": 2009,
     "midnight_reset": True,
-    "auto_wakeup": True
+    "auto_wakeup": True,
+    "off_delay_seconds": 180,
+    "min_pause_seconds": 120,
+    "enable_smoothing": True
 }
 
 def load_config():
@@ -323,8 +326,16 @@ def run_pv_controller():
     last_reset_day = datetime.now().date()
     last_auto_wakeup_time = 0
     car_sleep_count = 0
+    
     last_charging_start_time = 0
+    last_charging_stop_time = 0
+    off_delay_start_time = 0
+    phase_switch_start_time = 0
+    target_psm_candidate = 0
     is_charging_session_active = False
+    
+    pv_history = []
+    load_history = []
     
     while True:
         try:
@@ -361,6 +372,10 @@ def run_pv_controller():
             min_pv_amp = int(cfg.get("min_pv_ampere", 6))
             max_pv_amp = int(cfg.get("max_pv_ampere", 16))
             phases_setting = cfg.get("phases_setting", "auto")
+            
+            off_delay_sec = int(cfg.get("off_delay_seconds", 180))
+            min_pause_sec = int(cfg.get("min_pause_seconds", 120))
+            enable_smoothing = cfg.get("enable_smoothing", True)
 
             if now - last_solaredge_fetch >= poll_interval:
                 print(f"[PV-Controller] Hole SolarEdge Daten (Site {site_id})...")
@@ -408,128 +423,151 @@ def run_pv_controller():
             grid_w = system_status["solaredge"]["grid_power_w"]
             goe_w = system_status["goe"]["charging_power_w"]
 
-            house_base_w = max(0.0, load_w - goe_w)
-            raw_pv_surplus_w = pv_w - house_base_w
+            if enable_smoothing:
+                pv_history.append(pv_w)
+                load_history.append(load_w)
+                if len(pv_history) > 4:
+                    pv_history.pop(0)
+                if len(load_history) > 4:
+                    load_history.pop(0)
+                smoothed_pv_w = sum(pv_history) / len(pv_history)
+                smoothed_load_w = sum(load_history) / len(load_history)
+            else:
+                smoothed_pv_w = pv_w
+                smoothed_load_w = load_w
+
+            house_base_w = max(0.0, smoothed_load_w - goe_w)
+            raw_pv_surplus_w = smoothed_pv_w - house_base_w
             pv_surplus_w = max(0.0, raw_pv_surplus_w)
             available_w = max(pv_surplus_w, pv_threshold)
 
+            curr_psm = system_status["goe"].get("phase_mode", 0)
+            if phases_setting == "1":
+                target_psm = 1
+                w_per_amp = 230.0
+                min_power = min_pv_amp * 230.0
+            elif phases_setting == "3":
+                target_psm = 2
+                w_per_amp = 690.0
+                min_power = min_pv_amp * 690.0
+            else:
+                # Auto mode with hysteresis to prevent rapid 1-phase <-> 3-phase toggling at 4140W
+                desired_psm = 2 if available_w >= 4140.0 else 1
+                if curr_psm == 2 and available_w >= 3600.0:
+                    desired_psm = 2
+                
+                if desired_psm != target_psm_candidate:
+                    target_psm_candidate = desired_psm
+                    phase_switch_start_time = now
+                
+                active_psm = curr_psm if curr_psm in [1, 2] else 1
+                if target_psm_candidate != active_psm:
+                    if now - phase_switch_start_time >= 60:
+                        target_psm = target_psm_candidate
+                    else:
+                        target_psm = active_psm
+                else:
+                    target_psm = target_psm_candidate
+
+                if target_psm == 2:
+                    w_per_amp = 690.0
+                    min_power = min_pv_amp * 690.0
+                else:
+                    w_per_amp = 230.0
+                    min_power = min_pv_amp * 230.0
+
             target_amp = min_pv_amp
             target_frc = 0
-            target_psm = 0
             msg = ""
 
+            min_run_time_sec = 300 # 5 minutes minimum runtime
+
             if mode == "normal":
-                target_frc = 2  # Force On für BMW i4 Kompatibilität
+                target_frc = 2  # Force On
                 target_amp = normal_amp
+                off_delay_start_time = 0
+                is_charging_session_active = True
                 msg = f"Normalmodus: Laden mit festen {normal_amp} A aktiv"
-            elif mode == "pv_boerse":
-                # Börsenoptimiertes PV Laden
-                weekday = now_dt.weekday() # 0=Mo, 1=Di, 2=Mi, 3=Do, 4=Fr, 5=Sa, 6=So
-                hour = now_dt.hour
-
-                # Zeitfenster-Prämisse: Mo-Do 07:00-17:00, Fr 07:00-14:00, Sa-So ganztägig
-                in_schedule = False
-                if weekday in [0, 1, 2, 3]:
-                    in_schedule = (7 <= hour < 17)
-                elif weekday == 4:
-                    in_schedule = (7 <= hour < 14)
-                else:
-                    in_schedule = True # Wochenende
-
-                if phases_setting == "1":
-                    w_per_amp = 230.0
-                    min_power = 6.0 * 230.0
-                    target_psm = 1
-                elif phases_setting == "3":
-                    w_per_amp = 690.0
-                    min_power = 6.0 * 690.0
-                    target_psm = 2
-                else:
-                    if available_w >= 4140.0:
-                        w_per_amp = 690.0
-                        min_power = 4140.0
-                        target_psm = 2
-                    else:
-                        w_per_amp = 230.0
-                        min_power = 1380.0
-                        target_psm = 1
-
-                if available_w < min_power:
-                    target_frc = 1
-                    target_amp = min_pv_amp
-                    msg = f"Börsenoptimiert pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W"
-                else:
-                    target_frc = 2  # Force On für Aktivierung am Fahrzeug
+            else:
+                # Stock / Börsen or Standard PV
+                is_boerse_override = False
+                boerse_msg = ""
+                
+                if mode == "pv_boerse":
+                    weekday = now_dt.weekday()
+                    hour = now_dt.hour
+                    in_schedule = (7 <= hour < 17) if weekday in [0, 1, 2, 3] else ((7 <= hour < 14) if weekday == 4 else True)
                     curr_tariff_ct = system_status["vkw_tariff"].get("current_price_ct", 0.0)
                     prices = [p["vkw_tariff_ct_kwh"] for p in system_status["vkw_tariff"].get("prices", [])]
                     avg_tariff_ct = (sum(prices) / len(prices)) if prices else curr_tariff_ct
 
                     if in_schedule:
                         if curr_tariff_ct < 0:
-                            # Negativer Verkaufspreis -> Maximales Laden um Einspeisegebühr zu vermeiden
+                            is_boerse_override = True
+                            target_frc = 2
                             target_amp = max_pv_amp
-                            msg = f"Börsenoptimiert: Negativer Tarif ({curr_tariff_ct:.2f} ct) → Max. Laden ({target_amp} A)"
+                            boerse_msg = f"Börsenoptimiert: Negativer Tarif ({curr_tariff_ct:.2f} ct) → Max. Laden ({target_amp} A)"
                         elif curr_tariff_ct > avg_tariff_ct:
-                            # Hoher Verkaufspreis -> Ladestrom auf Minimum drosseln für max. Netzeinspeisung
+                            is_boerse_override = True
+                            target_frc = 2 if available_w >= min_power else 1
                             target_amp = min_pv_amp
-                            msg = f"Börsenoptimiert: Hoher Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh > Schnitt {avg_tariff_ct:.2f} ct) → Ladestrom gedrosselt ({target_amp} A)"
+                            boerse_msg = f"Börsenoptimiert: Hoher Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh > Schnitt {avg_tariff_ct:.2f} ct) → Ladestrom gedrosselt ({target_amp} A)"
+
+                if is_boerse_override:
+                    msg = boerse_msg
+                else:
+                    # Standard PV logic with Off-Delay & Min-Pause & Min-Runtime
+                    if available_w < min_power:
+                        if is_charging_session_active:
+                            elapsed_charging = now - last_charging_start_time
+                            if elapsed_charging < min_run_time_sec:
+                                remaining_run = int(min_run_time_sec - elapsed_charging)
+                                target_frc = 2
+                                target_amp = min_pv_amp
+                                msg = f"PV Laden gepuffert (⏱️ 5-Min. Mindestlaufzeit: noch {remaining_run}s). Verfügbar: {int(available_w)} W"
+                            else:
+                                if off_delay_start_time == 0:
+                                    off_delay_start_time = now
+                                elapsed_off = now - off_delay_start_time
+                                if elapsed_off < off_delay_sec:
+                                    remaining_off = int(off_delay_sec - elapsed_off)
+                                    target_frc = 2
+                                    target_amp = min_pv_amp
+                                    msg = f"PV Laden gepuffert (⏳ Ausschaltverzögerung: noch {remaining_off}s bis Stopp). Verfügbar: {int(available_w)} W < {int(min_power)} W"
+                                else:
+                                    target_frc = 1
+                                    target_amp = min_pv_amp
+                                    is_charging_session_active = False
+                                    last_charging_stop_time = now
+                                    off_delay_start_time = 0
+                                    msg = f"PV Laden pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W (Überschuss: {int(pv_surplus_w)} W, Netz-Toleranz: {round(pv_threshold/1000.0, 1)} kW)"
                         else:
-                            # Geringer Verkaufspreis -> Hoher Eigenverbrauch ins Auto
+                            target_frc = 1
+                            target_amp = min_pv_amp
+                            off_delay_start_time = 0
+                            msg = f"PV Laden pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W (Überschuss: {int(pv_surplus_w)} W, Netz-Toleranz: {round(pv_threshold/1000.0, 1)} kW)"
+                    else:
+                        # available_w >= min_power
+                        off_delay_start_time = 0
+                        if not is_charging_session_active:
+                            pause_elapsed = now - last_charging_stop_time
+                            if last_charging_stop_time > 0 and pause_elapsed < min_pause_sec:
+                                remaining_pause = int(min_pause_sec - pause_elapsed)
+                                target_frc = 1
+                                target_amp = min_pv_amp
+                                msg = f"PV Laden pausiert (⏸️ Mindestpausenzeit: noch {remaining_pause}s bis Freigabe). Verfügbar: {int(available_w)} W"
+                            else:
+                                target_frc = 2
+                                is_charging_session_active = True
+                                last_charging_start_time = now
+                                calculated_amp = int(available_w / w_per_amp)
+                                target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
+                                msg = f"PV Laden aktiv: {target_amp} A ({'3-phasig' if target_psm==2 else '1-phasig'}). Verfügbar: {int(available_w)} W"
+                        else:
+                            target_frc = 2
                             calculated_amp = int(available_w / w_per_amp)
                             target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
-                            msg = f"Börsenoptimiert: Geringer Verkaufspreis ({curr_tariff_ct:.2f} ct/kWh ≤ Schnitt {avg_tariff_ct:.2f} ct) → Eigenverbrauch mit {target_amp} A"
-                    else:
-                        # Außerhalb des Zeitfensters: Standard PV-Laden
-                        calculated_amp = int(available_w / w_per_amp)
-                        target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
-                        msg = f"Börsenoptimiert (Außerhalb Zeitfenster): Standard PV-Laden mit {target_amp} A aktiv"
-            else:
-                if phases_setting == "1":
-                    w_per_amp = 230.0
-                    min_power = 6.0 * 230.0
-                    target_psm = 1
-                elif phases_setting == "3":
-                    w_per_amp = 690.0
-                    min_power = 6.0 * 690.0
-                    target_psm = 2
-                else:
-                    if available_w >= 4140.0:
-                        w_per_amp = 690.0
-                        min_power = 4140.0
-                        target_psm = 2
-                    else:
-                        w_per_amp = 230.0
-                        min_power = 1380.0
-                        target_psm = 1
-
-                if available_w < min_power:
-                    target_frc = 1
-                    target_amp = min_pv_amp
-                    msg = f"PV Laden pausiert: Verfügbar {int(available_w)} W < Benötigt {int(min_power)} W (Überschuss: {int(pv_surplus_w)} W, Netz-Toleranz: {round(pv_threshold/1000.0, 1)} kW)"
-                else:
-                    target_frc = 2  # Force On für Aktivierung am Fahrzeug
-                    calculated_amp = int(available_w / w_per_amp)
-                    target_amp = max(min_pv_amp, min(max_pv_amp, calculated_amp))
-                    msg = f"PV Laden aktiv: {target_amp} A ({'3-phasig' if target_psm==2 else '1-phasig'}). Verfügbar: {int(available_w)} W"
-
-            # 5-Minuten Mindestlaufzeit-Schutz (300 Sekunden):
-            # Wenn das Laden gestartet wird, darf es frühestens nach 5 Minuten wieder pausiert werden.
-            MIN_RUN_TIME_SEC = 300
-            if target_frc in [0, 2]:
-                if not is_charging_session_active:
-                    is_charging_session_active = True
-                    last_charging_start_time = now
-                    print(f"[PV-Controller] Ladevorgang gestartet um {now_dt.strftime('%H:%M:%S')}. 5-Minuten Mindestlaufzeit aktiviert.")
-            elif target_frc == 1 and is_charging_session_active:
-                elapsed_charging = now - last_charging_start_time
-                if elapsed_charging < MIN_RUN_TIME_SEC:
-                    remaining_sec = int(MIN_RUN_TIME_SEC - elapsed_charging)
-                    target_frc = 2  # Mindestlaufzeit schützt vor vorzeitigem Ausschalten
-                    target_amp = min_pv_amp  # Leistung dynamisch auf Minimum anpassen
-                    msg += f" (⏱️ 5-Min. Mindestlaufzeit aktiv: noch {remaining_sec}s bis Abschaltung erlaubt)"
-                else:
-                    is_charging_session_active = False
-                    print(f"[PV-Controller] 5-Minuten Mindestlaufzeit abgelaufen. Ladevorgang kann jetzt pausiert werden.")
+                            msg = f"PV Laden aktiv: {target_amp} A ({'3-phasig' if target_psm==2 else '1-phasig'}). Verfügbar: {int(available_w)} W"
 
             if goe_ip and system_status["goe"]["connected"]:
                 curr_amp = system_status["goe"]["ampere"]
@@ -650,7 +688,7 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/api/config":
             with config_lock:
-                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting", "midnight_reset", "auto_wakeup"]:
+                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting", "midnight_reset", "auto_wakeup", "off_delay_seconds", "min_pause_seconds", "enable_smoothing"]:
                     if k in data:
                         global_config[k] = data[k]
                 save_config(global_config)

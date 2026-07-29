@@ -122,6 +122,42 @@
                         <button class="preset-chip" onclick="setThresholdPreset(5000)">5.0 kW</button>
                         <button class="preset-chip" onclick="setThresholdPreset(10000)">10.0 kW</button>
                     </div>
+
+                    <!-- Smoothing & Delay Settings -->
+                    <div class="pv-smoothing-box" id="pv-smoothing-box">
+                        <div class="smoothing-header">
+                            <label class="threshold-label"><i class="fa-solid fa-wave-square"></i> Laderegelung Glättung & Entprellung</label>
+                            <p class="field-hint">Verhindert schnelles An- und Ausschalten bei vorbeiziehenden Wolken oder kurzzeitigen Verbrauchern im Haus.</p>
+                        </div>
+                        <div class="smoothing-grid">
+                            <div class="smoothing-item">
+                                <label for="select-off-delay"><i class="fa-solid fa-clock-rotate-left"></i> Ausschaltverzögerung:</label>
+                                <select id="select-off-delay" class="custom-select" onchange="saveSmoothingConfig()">
+                                    <option value="0">0 Sek. (Sofort abschalten)</option>
+                                    <option value="60">60 Sek. (1 Min.)</option>
+                                    <option value="120">120 Sek. (2 Min.)</option>
+                                    <option value="180" selected>180 Sek. (3 Min. - Empfohlen)</option>
+                                    <option value="300">300 Sek. (5 Min.)</option>
+                                </select>
+                            </div>
+                            <div class="smoothing-item">
+                                <label for="select-min-pause"><i class="fa-solid fa-pause"></i> Mindestpausenzeit:</label>
+                                <select id="select-min-pause" class="custom-select" onchange="saveSmoothingConfig()">
+                                    <option value="0">0 Sek. (Sofort wiedereinschalten)</option>
+                                    <option value="60">60 Sek. (1 Min.)</option>
+                                    <option value="120" selected>120 Sek. (2 Min. - Empfohlen)</option>
+                                    <option value="180">180 Sek. (3 Min.)</option>
+                                    <option value="300">300 Sek. (5 Min.)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="checkbox-option" style="margin-top: 12px;">
+                            <label>
+                                <input type="checkbox" id="chk-enable-smoothing" checked onchange="saveSmoothingConfig()">
+                                <span>Messwert-Glättung aktiv (Gleitender Mittelwert für PV & Hausverbrauch)</span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Normal Mode Ampere Setting (Visible in Normal Mode) -->
