@@ -485,9 +485,11 @@ def run_pv_controller():
             if mode == "normal":
                 target_frc = 2  # Force On
                 target_amp = normal_amp
+                if phases_setting in ["auto", "3"]:
+                    target_psm = 2  # Im Normalmodus (11 kW) voll 3-phasig laden
                 off_delay_start_time = 0
                 is_charging_session_active = True
-                msg = f"Normalmodus: Laden mit festen {normal_amp} A aktiv"
+                msg = f"Normalmodus: Laden mit festen {normal_amp} A ({'3-phasig' if target_psm==2 else '1-phasig'}) aktiv"
             else:
                 # Stock / Börsen or Standard PV
                 is_boerse_override = False
