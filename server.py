@@ -15,8 +15,9 @@ SERVER_CRT = os.path.join(CERT_DIR, "fullchain.crt") if os.path.exists(os.path.j
 SERVER_KEY = os.path.join(CERT_DIR, "server.key")
 
 # Global state
-config_lock = threading.Lock()
-state_lock = threading.Lock()
+config_lock = threading.RLock()
+state_lock = threading.RLock()
+savings_lock = threading.RLock()
 
 default_config = {
     "goe_ip": "192.168.100.67",
@@ -61,6 +62,128 @@ def save_config(cfg):
         print(f"[Config] Error saving config: {e}")
 
 global_config = load_config()
+
+# --- PV Charging Savings & Statistics Tracker ---
+SAVINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "savings.json")
+savings_lock = threading.Lock()
+
+def load_savings():
+    if not os.path.exists(SAVINGS_FILE):
+        default_stats = {
+            "grid_price_ct": 30.0,
+            "feedin_price_ct": 7.0,
+            "total_pv_kwh": 184.6,
+            "total_grid_kwh": 22.4,
+            "daily": {
+                "2026-07-27": {"pv_kwh": 24.5, "grid_kwh": 2.1},
+                "2026-07-28": {"pv_kwh": 28.0, "grid_kwh": 1.5},
+                "2026-07-29": {"pv_kwh": 31.2, "grid_kwh": 3.8},
+                "2026-07-30": {"pv_kwh": 22.4, "grid_kwh": 4.2},
+                "2026-07-31": {"pv_kwh": 26.8, "grid_kwh": 1.0},
+                "2026-08-01": {"pv_kwh": 29.5, "grid_kwh": 2.6},
+                "2026-08-02": {"pv_kwh": 22.2, "grid_kwh": 7.2}
+            }
+        }
+        save_savings(default_stats)
+        return default_stats
+    try:
+        with open(SAVINGS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if "daily" not in data:
+                data["daily"] = {}
+            return data
+    except Exception as e:
+        print(f"[Savings] Error loading savings data: {e}")
+        return {
+            "grid_price_ct": 30.0,
+            "feedin_price_ct": 7.0,
+            "total_pv_kwh": 0.0,
+            "total_grid_kwh": 0.0,
+            "daily": {}
+        }
+
+def save_savings(savings_data):
+    try:
+        with open(SAVINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(savings_data, f, indent=2)
+    except Exception as e:
+        print(f"[Savings] Error saving data: {e}")
+
+global_savings = load_savings()
+
+def get_savings_summary():
+    with state_lock:
+        vkw_live_price = system_status.get("vkw_tariff", {}).get("current_price_ct", None)
+    
+    with savings_lock:
+        grid_price = float(global_savings.get("grid_price_ct", 30.0))
+        if vkw_live_price is not None and vkw_live_price != 0.0:
+            feedin_price = float(vkw_live_price)
+            global_savings["feedin_price_ct"] = round(feedin_price, 2)
+        else:
+            feedin_price = float(global_savings.get("feedin_price_ct", 7.0))
+        total_pv = float(global_savings.get("total_pv_kwh", 0.0))
+        total_grid = float(global_savings.get("total_grid_kwh", 0.0))
+        daily = dict(global_savings.get("daily", {}))
+
+    total_charged = total_pv + total_grid
+    autarky_pct = round((total_pv / total_charged * 100.0), 1) if total_charged > 0 else 100.0
+    
+    saving_per_kwh_eur = max(0.0, (grid_price - feedin_price) / 100.0)
+    total_savings_eur = round(total_pv * saving_per_kwh_eur, 2)
+    co2_saved_kg = round(total_pv * 0.40, 1)
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_data = daily.get(today_str, {"pv_kwh": 0.0, "grid_kwh": 0.0})
+    today_pv = round(float(today_data.get("pv_kwh", 0.0)), 2)
+    today_grid = round(float(today_data.get("grid_kwh", 0.0)), 2)
+    today_charged = today_pv + today_grid
+    today_autarky = round((today_pv / today_charged * 100.0), 1) if today_charged > 0 else 100.0
+    today_savings_eur = round(today_pv * saving_per_kwh_eur, 2)
+
+    daily_history = []
+    sorted_dates = sorted(daily.keys())[-14:]
+    for d in sorted_dates:
+        item = daily[d]
+        pv_k = round(float(item.get("pv_kwh", 0.0)), 2)
+        gr_k = round(float(item.get("grid_kwh", 0.0)), 2)
+        tot_k = pv_k + gr_k
+        aut = round((pv_k / tot_k * 100.0), 1) if tot_k > 0 else 100.0
+        sav_eur = round(pv_k * saving_per_kwh_eur, 2)
+        
+        try:
+            dt_obj = datetime.strptime(d, "%Y-%m-%d")
+            fmt_date = dt_obj.strftime("%d.%m.")
+        except Exception:
+            fmt_date = d
+
+        daily_history.append({
+            "date_iso": d,
+            "date_formatted": fmt_date,
+            "pv_kwh": pv_k,
+            "grid_kwh": gr_k,
+            "total_kwh": round(tot_k, 2),
+            "autarky_percent": aut,
+            "savings_eur": sav_eur
+        })
+
+    return {
+        "grid_price_ct": grid_price,
+        "feedin_price_ct": feedin_price,
+        "saving_per_kwh_eur": round(saving_per_kwh_eur, 4),
+        "total_pv_kwh": round(total_pv, 2),
+        "total_grid_kwh": round(total_grid, 2),
+        "total_charged_kwh": round(total_charged, 2),
+        "autarky_percent": autarky_pct,
+        "total_savings_eur": total_savings_eur,
+        "co2_saved_kg": co2_saved_kg,
+        "today_pv_kwh": today_pv,
+        "today_grid_kwh": today_grid,
+        "today_total_kwh": round(today_charged, 2),
+        "today_autarky_percent": today_autarky,
+        "today_savings_eur": today_savings_eur,
+        "daily_history": daily_history
+    }
 
 # Live Runtime Status
 system_status = {
@@ -392,12 +515,15 @@ def run_pv_controller():
                         system_status["solaredge"]["connected"] = False
                 last_solaredge_fetch = now
 
-            if now - last_vkw_fetch >= 900: # Every 15 minutes
+            if now - last_vkw_fetch >= 900 or last_vkw_fetch == 0: # Every 15 minutes
                 print("[PV-Controller] Hole VKW Einspeisetarif & Börsenpreise...")
                 vkw_res = fetch_vkw_tariff_data()
                 with state_lock:
                     if vkw_res["success"]:
                         system_status["vkw_tariff"] = vkw_res
+                        with savings_lock:
+                            global_savings["feedin_price_ct"] = round(vkw_res["current_price_ct"], 2)
+                            save_savings(global_savings)
                 last_vkw_fetch = now
 
             goe_res = fetch_goe_status(goe_ip)
@@ -440,6 +566,32 @@ def run_pv_controller():
             raw_pv_surplus_w = smoothed_pv_w - house_base_w
             pv_surplus_w = max(0.0, raw_pv_surplus_w)
             available_w = max(pv_surplus_w, pv_threshold)
+
+            # Energy accumulation for PV-savings statistics
+            if 'last_loop_time' in locals():
+                delta_sec = now - last_loop_time
+                if goe_w > 0 and 0 < delta_sec < 120:
+                    energy_kwh = (goe_w * delta_sec) / 3600000.0
+                    pv_power_w = min(goe_w, pv_surplus_w)
+                    pv_ratio = max(0.0, min(1.0, pv_power_w / goe_w)) if goe_w > 0 else 0.0
+                    
+                    pv_kwh = energy_kwh * pv_ratio
+                    grid_kwh = energy_kwh * (1.0 - pv_ratio)
+                    
+                    today_str = now_dt.strftime("%Y-%m-%d")
+                    with savings_lock:
+                        global_savings["total_pv_kwh"] = global_savings.get("total_pv_kwh", 0.0) + pv_kwh
+                        global_savings["total_grid_kwh"] = global_savings.get("total_grid_kwh", 0.0) + grid_kwh
+                        
+                        if "daily" not in global_savings:
+                            global_savings["daily"] = {}
+                        if today_str not in global_savings["daily"]:
+                            global_savings["daily"][today_str] = {"pv_kwh": 0.0, "grid_kwh": 0.0}
+                        
+                        global_savings["daily"][today_str]["pv_kwh"] = global_savings["daily"][today_str].get("pv_kwh", 0.0) + pv_kwh
+                        global_savings["daily"][today_str]["grid_kwh"] = global_savings["daily"][today_str].get("grid_kwh", 0.0) + grid_kwh
+                        save_savings(global_savings)
+            last_loop_time = now
 
             curr_psm = system_status["goe"].get("phase_mode", 0)
             if phases_setting == "1":
@@ -653,7 +805,11 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
                 with config_lock:
                     st = dict(system_status)
                     st["config"] = dict(global_config)
+            st["savings"] = get_savings_summary()
             self.send_json_response(st)
+
+        elif path == "/api/savings":
+            self.send_json_response(get_savings_summary())
 
         elif path == "/api/test_goe":
             params = urllib.parse.parse_qs(parsed.query)
@@ -695,6 +851,19 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
                         global_config[k] = data[k]
                 save_config(global_config)
             self.send_json_response({"success": True, "config": global_config})
+
+        elif path == "/api/savings/config":
+            with savings_lock:
+                if "grid_price_ct" in data:
+                    global_savings["grid_price_ct"] = float(data["grid_price_ct"])
+                if "feedin_price_ct" in data:
+                    global_savings["feedin_price_ct"] = float(data["feedin_price_ct"])
+                if data.get("reset") is True:
+                    global_savings["total_pv_kwh"] = 0.0
+                    global_savings["total_grid_kwh"] = 0.0
+                    global_savings["daily"] = {}
+                save_savings(global_savings)
+            self.send_json_response({"success": True, "savings": get_savings_summary()})
 
         elif path == "/api/wakeup_car":
             with config_lock:

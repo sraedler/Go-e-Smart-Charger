@@ -7,8 +7,9 @@ services:
     ports:
       - "2009:2009"
     volumes:
-      # Persistierung der Konfiguration & SSL Zertifikate bei Container-Neustarts
+      # Persistierung der Konfiguration, Ersparnis-Statistik & SSL Zertifikate
       - ./config.json:/app/config.json
+      - ./savings.json:/app/savings.json
       - ./certs:/app/certs
     environment:
       - TZ=Europe/Vienna

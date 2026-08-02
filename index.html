@@ -229,6 +229,111 @@
                 </div>
             </section>
 
+            <!-- PV Charging Savings & Statistics Card -->
+            <section class="card savings-card glass-effect">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-piggy-bank text-emerald"></i> PV-Ladeersparnis & Autarkie-Statistik</h2>
+                    <span class="savings-tag" id="badge-total-autarky"><i class="fa-solid fa-solar-panel"></i> --% PV-Autarkie</span>
+                </div>
+
+                <!-- Savings Hero Metrics Grid -->
+                <div class="savings-hero-grid">
+                    <div class="savings-box box-savings">
+                        <div class="s-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                        <div class="s-info">
+                            <span class="s-label">Netto-Ersparnis Gesamt</span>
+                            <div class="s-val-group">
+                                <span class="s-val text-emerald" id="val-savings-total-eur">0.00 €</span>
+                            </div>
+                            <span class="s-subtext" id="val-savings-delta-sub">vs. reiner Netzbezug</span>
+                        </div>
+                    </div>
+
+                    <div class="savings-box box-pv">
+                        <div class="s-icon"><i class="fa-solid fa-sun"></i></div>
+                        <div class="s-info">
+                            <span class="s-label">PV Sonnenstrom Geladen</span>
+                            <div class="s-val-group">
+                                <span class="s-val text-gold" id="val-savings-pv-kwh">0.0 kWh</span>
+                            </div>
+                            <span class="s-subtext">Eigenverbrauch im Auto</span>
+                        </div>
+                    </div>
+
+                    <div class="savings-box box-grid">
+                        <div class="s-icon"><i class="fa-solid fa-tower-cell"></i></div>
+                        <div class="s-info">
+                            <span class="s-label">Ergänzender Netzbezug</span>
+                            <div class="s-val-group">
+                                <span class="s-val text-orange" id="val-savings-grid-kwh">0.0 kWh</span>
+                            </div>
+                            <span class="s-subtext">Zusätzlich aus Netz bezogen</span>
+                        </div>
+                    </div>
+
+                    <div class="savings-box box-co2">
+                        <div class="s-icon"><i class="fa-solid fa-leaf"></i></div>
+                        <div class="s-info">
+                            <span class="s-label">CO₂-Einsparung</span>
+                            <div class="s-val-group">
+                                <span class="s-val text-leaf" id="val-savings-co2-kg">0.0 kg</span>
+                            </div>
+                            <span class="s-subtext">Eingesparte Emissionen</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Price Calculator & Settings Bar -->
+                <div class="savings-calc-panel">
+                    <div class="calc-header">
+                        <h3><i class="fa-solid fa-sliders"></i> Ersparnis-Rechner & VKW Tarif-Kopplung</h3>
+                        <p class="calc-hint">Die Einspeisevergütung wird automatisch aus dem live abgerufenen VKW-Dynamik-Tarif berechnet.</p>
+                    </div>
+                    <div class="calc-grid">
+                        <div class="calc-field">
+                            <label for="input-grid-price"><i class="fa-solid fa-plug"></i> Netzstrombezug (ct/kWh):</label>
+                            <input type="number" id="input-grid-price" step="0.1" value="30.0" class="custom-input">
+                        </div>
+                        <div class="calc-field">
+                            <label for="input-feedin-price"><i class="fa-solid fa-hand-holding-dollar"></i> VKW Einspeisetarif (ct/kWh):</label>
+                            <input type="number" id="input-feedin-price" step="0.1" value="7.0" class="custom-input">
+                        </div>
+                        <div class="calc-btn-group">
+                            <button class="btn-primary" onclick="saveSavingsPrices()"><i class="fa-solid fa-floppy-disk"></i> Speichern</button>
+                            <button class="btn-secondary" onclick="syncVkwFeedinPrice()"><i class="fa-solid fa-rotate-right"></i> VKW Tarif Übernehmen</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Container (Daily Bar Chart & Autarky Donut Chart) -->
+                <div class="savings-charts-wrapper">
+                    <div class="chart-box main-bar-chart">
+                        <div class="chart-header">
+                            <h3><i class="fa-solid fa-car-battery text-gold"></i> Tatsächlich ins Auto geladene Ladeenergie (kWh) & Ersparnis (€)</h3>
+                        </div>
+                        <div class="canvas-wrapper">
+                            <canvas id="savingsBarChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-box donut-chart-box">
+                        <div class="chart-header">
+                            <h3><i class="fa-solid fa-chart-pie"></i> Strommix beim Laden</h3>
+                        </div>
+                        <div class="canvas-wrapper donut-canvas">
+                            <canvas id="autarkyDonutChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Diagramm Lesehilfe / Legend Guide -->
+                <div class="chart-guide-box">
+                    <div class="guide-item"><span class="color-pill bg-green"></span> <strong>Grün:</strong> PV-Sonnenstrom im Auto (kWh)</div>
+                    <div class="guide-item"><span class="color-pill bg-orange"></span> <strong>Orange:</strong> Netzstrom im Auto (kWh)</div>
+                    <div class="guide-item"><i class="fa-solid fa-ruler-vertical text-cyan"></i> <strong>Balkenhöhe:</strong> Gesamt ins Auto geladene kWh</div>
+                    <div class="guide-item"><span class="color-line bg-gold"></span> <strong>Gelbe Linie:</strong> Ersparnis (€)</div>
+                </div>
+            </section>
+
             <!-- VKW Dynamic Feed-in Tariff & Chart Card -->
             <section class="card tariff-card glass-effect">
                 <div class="card-header">

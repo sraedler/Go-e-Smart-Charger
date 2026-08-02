@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Persistent App Data & Config (Not tracked by Git)
+config.json
+savings.json

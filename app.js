@@ -36,6 +36,9 @@ function fetchStatus() {
             if (data.vkw_tariff) {
                 updateVkwTariffUI(data.vkw_tariff, data.solaredge ? data.solaredge.grid_power_w : 0);
             }
+            if (data.savings) {
+                updateSavingsUI(data.savings);
+            }
             
             document.getElementById("system-status-text").innerText = "Aktiv & Synchronisiert";
             document.getElementById("system-status-badge").style.borderColor = "rgba(0, 230, 118, 0.4)";
@@ -457,4 +460,261 @@ function saveSmoothingConfig() {
         min_pause_seconds: minPause,
         enable_smoothing: enableSmoothing
     });
+}
+
+// PV Charging Savings & Statistics UI
+let savingsBarChartInstance = null;
+let autarkyDonutChartInstance = null;
+
+function updateSavingsUI(savings) {
+    if (!savings) return;
+
+    const totalEur = savings.total_savings_eur !== undefined ? savings.total_savings_eur.toFixed(2) : "0.00";
+    const pvKwh = savings.total_pv_kwh !== undefined ? savings.total_pv_kwh.toFixed(1) : "0.0";
+    const gridKwh = savings.total_grid_kwh !== undefined ? savings.total_grid_kwh.toFixed(1) : "0.0";
+    const co2Kg = savings.co2_saved_kg !== undefined ? savings.co2_saved_kg.toFixed(1) : "0.0";
+    const autarkyPct = savings.autarky_percent !== undefined ? savings.autarky_percent.toFixed(1) : "100.0";
+    
+    const savingPerKwhCt = ((savings.grid_price_ct || 30.0) - (savings.feedin_price_ct || 7.0)).toFixed(1);
+
+    const elTotalEur = document.getElementById("val-savings-total-eur");
+    const elPvKwh = document.getElementById("val-savings-pv-kwh");
+    const elGridKwh = document.getElementById("val-savings-grid-kwh");
+    const elCo2 = document.getElementById("val-savings-co2-kg");
+    const elAutarkyBadge = document.getElementById("badge-total-autarky");
+    const elDeltaSub = document.getElementById("val-savings-delta-sub");
+
+    if (elTotalEur) elTotalEur.innerText = `${totalEur} €`;
+    if (elPvKwh) elPvKwh.innerText = `${pvKwh} kWh`;
+    if (elGridKwh) elGridKwh.innerText = `${gridKwh} kWh`;
+    if (elCo2) elCo2.innerText = `${co2Kg} kg`;
+    if (elAutarkyBadge) elAutarkyBadge.innerHTML = `<i class="fa-solid fa-solar-panel"></i> ${autarkyPct}% PV-Autarkie`;
+    if (elDeltaSub) elDeltaSub.innerText = `vs. Netzbezug (${savingPerKwhCt} ct/kWh Ersparnis)`;
+
+    const inputGrid = document.getElementById("input-grid-price");
+    const inputFeedin = document.getElementById("input-feedin-price");
+    if (inputGrid && document.activeElement !== inputGrid && savings.grid_price_ct !== undefined) {
+        inputGrid.value = savings.grid_price_ct;
+    }
+    if (inputFeedin && document.activeElement !== inputFeedin && savings.feedin_price_ct !== undefined) {
+        inputFeedin.value = savings.feedin_price_ct;
+    }
+
+    renderSavingsBarChart(savings.daily_history || []);
+    renderAutarkyDonutChart(savings.total_pv_kwh || 0, savings.total_grid_kwh || 0);
+}
+
+function renderSavingsBarChart(dailyHistory) {
+    if (!dailyHistory || dailyHistory.length === 0) return;
+    const canvas = document.getElementById("savingsBarChart");
+    if (!canvas) return;
+
+    const labels = dailyHistory.map(d => d.date_formatted);
+    const pvData = dailyHistory.map(d => d.pv_kwh);
+    const gridData = dailyHistory.map(d => d.grid_kwh);
+    const eurData = dailyHistory.map(d => d.savings_eur);
+
+    if (savingsBarChartInstance) {
+        savingsBarChartInstance.data.labels = labels;
+        savingsBarChartInstance.data.datasets[0].data = pvData;
+        savingsBarChartInstance.data.datasets[1].data = gridData;
+        savingsBarChartInstance.data.datasets[2].data = eurData;
+        savingsBarChartInstance.update();
+        return;
+    }
+
+    if (typeof Chart === 'undefined') return;
+
+    const ctx = canvas.getContext("2d");
+    savingsBarChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'PV-Sonnenstrom (kWh)',
+                    data: pvData,
+                    backgroundColor: 'rgba(0, 230, 118, 0.85)',
+                    borderColor: '#00e676',
+                    borderWidth: 1.5,
+                    borderRadius: 4,
+                    stack: 'car_energy',
+                    order: 2
+                },
+                {
+                    label: 'Netzstrom (kWh)',
+                    data: gridData,
+                    backgroundColor: 'rgba(255, 145, 0, 0.75)',
+                    borderColor: '#ff9100',
+                    borderWidth: 1.5,
+                    borderRadius: 4,
+                    stack: 'car_energy',
+                    order: 2
+                },
+                {
+                    label: 'Ersparnis (€)',
+                    data: eurData,
+                    type: 'line',
+                    borderColor: '#ffd700',
+                    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#ffd700',
+                    pointRadius: 4,
+                    yAxisID: 'y1',
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: { color: '#94a3b8', font: { family: 'Outfit', size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(items) {
+                            return `Tag: ${items[0].label}`;
+                        },
+                        label: function(ctx) {
+                            if (ctx.dataset.label.includes('Ersparnis')) {
+                                return `💰 PV-Ersparnis: ${ctx.raw.toFixed(2)} €`;
+                            }
+                            if (ctx.dataset.label.includes('PV-Sonnenstrom')) {
+                                return `☀️ PV-Sonnenstrom: ${ctx.raw.toFixed(1)} kWh`;
+                            }
+                            if (ctx.dataset.label.includes('Netzstrom')) {
+                                return `🔌 Netzbezug: ${ctx.raw.toFixed(1)} kWh`;
+                            }
+                            return `${ctx.dataset.label}: ${ctx.raw.toFixed(1)} kWh`;
+                        },
+                        footer: function(items) {
+                            let totalKwh = 0;
+                            items.forEach(item => {
+                                if (item.dataset.type !== 'line') {
+                                    totalKwh += item.raw;
+                                }
+                            });
+                            return `⚡ Gesamt ins Auto geladen: ${totalKwh.toFixed(1)} kWh`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#94a3b8', font: { family: 'Outfit', size: 10 } }
+                },
+                y: {
+                    stacked: true,
+                    title: { display: true, text: 'Geladene Energie im Auto (kWh)', color: '#94a3b8' },
+                    grid: { color: 'rgba(255, 255, 255, 0.08)' },
+                    ticks: { color: '#94a3b8', font: { family: 'Outfit', size: 11 } }
+                },
+                y1: {
+                    position: 'right',
+                    title: { display: true, text: 'Ersparnis (€)', color: '#ffd700' },
+                    grid: { drawOnChartArea: false },
+                    ticks: {
+                        color: '#ffd700',
+                        font: { family: 'Outfit', size: 11 },
+                        callback: function(val) { return val.toFixed(2) + ' €'; }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderAutarkyDonutChart(pvKwh, gridKwh) {
+    const canvas = document.getElementById("autarkyDonutChart");
+    if (!canvas) return;
+
+    let displayPv = pvKwh;
+    let displayGrid = gridKwh;
+    if (pvKwh <= 0 && gridKwh <= 0) {
+        displayPv = 100;
+        displayGrid = 0;
+    }
+
+    if (autarkyDonutChartInstance) {
+        autarkyDonutChartInstance.data.datasets[0].data = [displayPv, displayGrid];
+        autarkyDonutChartInstance.update();
+        return;
+    }
+
+    if (typeof Chart === 'undefined') return;
+
+    const ctx = canvas.getContext("2d");
+    autarkyDonutChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['PV Sonnenstrom', 'Zusatz-Netzstrom'],
+            datasets: [{
+                data: [displayPv, displayGrid],
+                backgroundColor: ['#00e676', '#ff9100'],
+                borderColor: ['rgba(0, 230, 118, 0.8)', 'rgba(255, 145, 0, 0.8)'],
+                borderWidth: 2,
+                hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#94a3b8', font: { family: 'Outfit', size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+                            return `${ctx.label}: ${ctx.raw.toFixed(1)} kWh (${pct}%)`;
+                        }
+                    }
+                }
+            },
+            cutout: '70%'
+        }
+    });
+}
+
+function saveSavingsPrices() {
+    const gridPrice = parseFloat(document.getElementById("input-grid-price").value) || 30.0;
+    const feedinPrice = parseFloat(document.getElementById("input-feedin-price").value) || 7.0;
+
+    fetch("/api/savings/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grid_price_ct: gridPrice, feedin_price_ct: feedinPrice })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.savings) {
+            updateSavingsUI(data.savings);
+        }
+    })
+    .catch(err => console.error("Fehler beim Speichern der Preise:", err));
+}
+
+function syncVkwFeedinPrice() {
+    fetch("/api/vkw_tariff")
+        .then(res => res.json())
+        .then(vkw => {
+            if (vkw && vkw.current_price_ct !== undefined) {
+                const currentVkwCt = vkw.current_price_ct.toFixed(1);
+                document.getElementById("input-feedin-price").value = currentVkwCt;
+                saveSavingsPrices();
+            }
+        })
+        .catch(err => console.error("Fehler beim Abrufen des VKW Tarifs:", err));
 }
