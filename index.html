@@ -231,13 +231,38 @@
 
             <!-- PV Charging Savings & Statistics Card -->
             <section class="card savings-card glass-effect">
-                <div class="card-header">
-                    <h2><i class="fa-solid fa-piggy-bank text-emerald"></i> PV-Ladeersparnis & Autarkie-Statistik</h2>
+                <div class="card-header flex-between">
+                    <div>
+                        <h2><i class="fa-solid fa-piggy-bank text-emerald"></i> PV-Ladeersparnis & Autarkie-Statistik</h2>
+                        <span class="header-subtitle" id="val-savings-header-period"><i class="fa-regular fa-calendar"></i> Aufzeichnungszeitraum: --</span>
+                    </div>
                     <span class="savings-tag" id="badge-total-autarky"><i class="fa-solid fa-solar-panel"></i> --% PV-Autarkie</span>
                 </div>
 
                 <!-- Savings Hero Metrics Grid -->
                 <div class="savings-hero-grid">
+                    <div class="savings-box box-price">
+                        <div class="s-icon"><i class="fa-solid fa-credit-card"></i></div>
+                        <div class="s-info">
+                            <span class="s-label">Effektiver Ladepreis</span>
+                            <div class="s-val-group">
+                                <span class="s-val text-blue" id="val-savings-effective-price">0.0 ct/kWh</span>
+                            </div>
+                            <span class="s-subtext" id="val-savings-effective-sub">Statt 30,0 ct/kWh Netzbezug</span>
+                        </div>
+                    </div>
+
+                    <div class="savings-box box-cost">
+                        <div class="s-icon"><i class="fa-solid fa-receipt"></i></div>
+                        <div class="s-info">
+                            <span class="s-label">Tatsächliche Ladekosten</span>
+                            <div class="s-val-group">
+                                <span class="s-val text-cyan" id="val-savings-total-cost">0.00 €</span>
+                            </div>
+                            <span class="s-subtext">Gesamtkosten für geladene kWh</span>
+                        </div>
+                    </div>
+
                     <div class="savings-box box-savings">
                         <div class="s-icon"><i class="fa-solid fa-sack-dollar"></i></div>
                         <div class="s-info">
@@ -246,6 +271,7 @@
                                 <span class="s-val text-emerald" id="val-savings-total-eur">0.00 €</span>
                             </div>
                             <span class="s-subtext" id="val-savings-delta-sub">vs. reiner Netzbezug</span>
+                            <div class="s-period" id="val-savings-period"><i class="fa-regular fa-calendar-days"></i> <span id="val-savings-period-text">Zeitraum: --</span></div>
                         </div>
                     </div>
 

@@ -470,26 +470,39 @@ function updateSavingsUI(savings) {
     if (!savings) return;
 
     const totalEur = savings.total_savings_eur !== undefined ? savings.total_savings_eur.toFixed(2) : "0.00";
+    const totalCost = savings.total_charging_cost_eur !== undefined ? savings.total_charging_cost_eur.toFixed(2) : "0.00";
+    const effectivePrice = savings.effective_price_ct_kwh !== undefined ? savings.effective_price_ct_kwh.toFixed(1) : "0.0";
     const pvKwh = savings.total_pv_kwh !== undefined ? savings.total_pv_kwh.toFixed(1) : "0.0";
     const gridKwh = savings.total_grid_kwh !== undefined ? savings.total_grid_kwh.toFixed(1) : "0.0";
     const co2Kg = savings.co2_saved_kg !== undefined ? savings.co2_saved_kg.toFixed(1) : "0.0";
     const autarkyPct = savings.autarky_percent !== undefined ? savings.autarky_percent.toFixed(1) : "100.0";
     
+    const gridPriceVal = (savings.grid_price_ct || 30.0).toFixed(1);
     const savingPerKwhCt = ((savings.grid_price_ct || 30.0) - (savings.feedin_price_ct || 7.0)).toFixed(1);
 
+    const elEffectivePrice = document.getElementById("val-savings-effective-price");
+    const elEffectiveSub = document.getElementById("val-savings-effective-sub");
+    const elTotalCost = document.getElementById("val-savings-total-cost");
     const elTotalEur = document.getElementById("val-savings-total-eur");
     const elPvKwh = document.getElementById("val-savings-pv-kwh");
     const elGridKwh = document.getElementById("val-savings-grid-kwh");
     const elCo2 = document.getElementById("val-savings-co2-kg");
     const elAutarkyBadge = document.getElementById("badge-total-autarky");
     const elDeltaSub = document.getElementById("val-savings-delta-sub");
+    const elPeriodText = document.getElementById("val-savings-period-text");
+    const elHeaderPeriod = document.getElementById("val-savings-header-period");
 
+    if (elEffectivePrice) elEffectivePrice.innerText = `${effectivePrice} ct/kWh`;
+    if (elEffectiveSub) elEffectiveSub.innerText = `Statt ${gridPriceVal} ct/kWh Netzbezug`;
+    if (elTotalCost) elTotalCost.innerText = `${totalCost} €`;
     if (elTotalEur) elTotalEur.innerText = `${totalEur} €`;
     if (elPvKwh) elPvKwh.innerText = `${pvKwh} kWh`;
     if (elGridKwh) elGridKwh.innerText = `${gridKwh} kWh`;
     if (elCo2) elCo2.innerText = `${co2Kg} kg`;
     if (elAutarkyBadge) elAutarkyBadge.innerHTML = `<i class="fa-solid fa-solar-panel"></i> ${autarkyPct}% PV-Autarkie`;
     if (elDeltaSub) elDeltaSub.innerText = `vs. Netzbezug (${savingPerKwhCt} ct/kWh Ersparnis)`;
+    if (elPeriodText) elPeriodText.innerText = savings.period_str ? `Zeitraum: ${savings.period_str}` : "Zeitraum: Gesamt";
+    if (elHeaderPeriod) elHeaderPeriod.innerHTML = savings.period_str ? `<i class="fa-regular fa-calendar"></i> Aufzeichnungszeitraum: ${savings.period_str}` : "";
 
     const inputGrid = document.getElementById("input-grid-price");
     const inputFeedin = document.getElementById("input-feedin-price");

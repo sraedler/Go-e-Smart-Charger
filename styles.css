@@ -1079,6 +1079,8 @@ input[type=range]::-webkit-slider-thumb:active {
 .text-gold { color: #ffd700 !important; }
 .text-orange { color: #ff9100 !important; }
 .text-leaf { color: #69f0ae !important; }
+.text-blue { color: #29b6f6 !important; }
+.text-cyan { color: #00e5ff !important; }
 
 .savings-tag {
     padding: 6px 14px;
@@ -1095,7 +1097,7 @@ input[type=range]::-webkit-slider-thumb:active {
 
 .savings-hero-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 16px;
     margin-bottom: 20px;
 }
@@ -1127,6 +1129,8 @@ input[type=range]::-webkit-slider-thumb:active {
     flex-shrink: 0;
 }
 
+.box-price .s-icon { background: rgba(41, 182, 246, 0.15); color: #29b6f6; }
+.box-cost .s-icon { background: rgba(0, 229, 255, 0.15); color: #00e5ff; }
 .box-savings .s-icon { background: rgba(0, 230, 118, 0.15); color: #00e676; }
 .box-pv .s-icon { background: rgba(255, 215, 0, 0.15); color: #ffd700; }
 .box-grid .s-icon { background: rgba(255, 145, 0, 0.15); color: #ff9100; }
@@ -1154,6 +1158,25 @@ input[type=range]::-webkit-slider-thumb:active {
     font-size: 0.72rem;
     color: var(--text-muted);
     margin-top: 2px;
+}
+
+.s-period {
+    font-size: 0.7rem;
+    color: var(--accent-pv, #00e676);
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+.header-subtitle {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    font-weight: 400;
 }
 
 .savings-calc-panel {
