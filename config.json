@@ -11,5 +11,8 @@
   "phases_setting": "auto",
   "server_port": 2009,
   "midnight_reset": true,
-  "auto_wakeup": true
+  "auto_wakeup": true,
+  "off_delay_seconds": 180,
+  "min_pause_seconds": 120,
+  "enable_smoothing": true
 }

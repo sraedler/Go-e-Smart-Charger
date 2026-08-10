@@ -72,17 +72,10 @@ def load_savings():
         default_stats = {
             "grid_price_ct": 30.0,
             "feedin_price_ct": 7.0,
-            "total_pv_kwh": 184.6,
-            "total_grid_kwh": 22.4,
-            "daily": {
-                "2026-07-27": {"pv_kwh": 24.5, "grid_kwh": 2.1},
-                "2026-07-28": {"pv_kwh": 28.0, "grid_kwh": 1.5},
-                "2026-07-29": {"pv_kwh": 31.2, "grid_kwh": 3.8},
-                "2026-07-30": {"pv_kwh": 22.4, "grid_kwh": 4.2},
-                "2026-07-31": {"pv_kwh": 26.8, "grid_kwh": 1.0},
-                "2026-08-01": {"pv_kwh": 29.5, "grid_kwh": 2.6},
-                "2026-08-02": {"pv_kwh": 22.2, "grid_kwh": 7.2}
-            }
+            "total_pv_kwh": 0.0,
+            "total_grid_kwh": 0.0,
+            "start_date": datetime.now().strftime("%Y-%m-%d"),
+            "daily": {}
         }
         save_savings(default_stats)
         return default_stats
@@ -91,6 +84,9 @@ def load_savings():
             data = json.load(f)
             if "daily" not in data:
                 data["daily"] = {}
+            if "start_date" not in data or not data["start_date"]:
+                dates = sorted(data["daily"].keys()) if data["daily"] else []
+                data["start_date"] = dates[0] if dates else datetime.now().strftime("%Y-%m-%d")
             return data
     except Exception as e:
         print(f"[Savings] Error loading savings data: {e}")
@@ -99,6 +95,7 @@ def load_savings():
             "feedin_price_ct": 7.0,
             "total_pv_kwh": 0.0,
             "total_grid_kwh": 0.0,
+            "start_date": datetime.now().strftime("%Y-%m-%d"),
             "daily": {}
         }
 
@@ -133,6 +130,10 @@ def get_savings_summary():
     total_savings_eur = round(total_pv * saving_per_kwh_eur, 2)
     co2_saved_kg = round(total_pv * 0.40, 1)
 
+    # Actual charging cost calculation (PV energy at opportunity cost feedin_price, Grid energy at grid_price)
+    total_charging_cost_eur = round((total_pv * (feedin_price / 100.0)) + (total_grid * (grid_price / 100.0)), 2)
+    effective_price_ct_kwh = round((total_charging_cost_eur * 100.0 / total_charged), 1) if total_charged > 0 else grid_price
+
     today_str = datetime.now().strftime("%Y-%m-%d")
     today_data = daily.get(today_str, {"pv_kwh": 0.0, "grid_kwh": 0.0})
     today_pv = round(float(today_data.get("pv_kwh", 0.0)), 2)
@@ -140,6 +141,29 @@ def get_savings_summary():
     today_charged = today_pv + today_grid
     today_autarky = round((today_pv / today_charged * 100.0), 1) if today_charged > 0 else 100.0
     today_savings_eur = round(today_pv * saving_per_kwh_eur, 2)
+    today_charging_cost_eur = round((today_pv * (feedin_price / 100.0)) + (today_grid * (grid_price / 100.0)), 2)
+    today_effective_price_ct_kwh = round((today_charging_cost_eur * 100.0 / today_charged), 1) if today_charged > 0 else grid_price
+
+    all_dates = sorted(daily.keys()) if daily else []
+    with savings_lock:
+        start_date_iso = global_savings.get("start_date")
+        if not start_date_iso:
+            start_date_iso = all_dates[0] if all_dates else today_str
+            global_savings["start_date"] = start_date_iso
+
+    try:
+        dt_start = datetime.strptime(start_date_iso, "%Y-%m-%d")
+        dt_end = datetime.strptime(today_str, "%Y-%m-%d")
+        start_fmt = dt_start.strftime("%d.%m.%Y")
+        end_fmt = dt_end.strftime("%d.%m.%Y")
+        if start_date_iso == today_str:
+            period_str = f"Seit heute ({start_fmt})"
+        else:
+            period_str = f"{start_fmt} – {end_fmt}"
+    except Exception:
+        period_str = f"Seit {start_date_iso}"
+        start_fmt = start_date_iso
+        end_fmt = today_str
 
     daily_history = []
     sorted_dates = sorted(daily.keys())[-14:]
@@ -150,6 +174,8 @@ def get_savings_summary():
         tot_k = pv_k + gr_k
         aut = round((pv_k / tot_k * 100.0), 1) if tot_k > 0 else 100.0
         sav_eur = round(pv_k * saving_per_kwh_eur, 2)
+        d_cost_eur = round((pv_k * (feedin_price / 100.0)) + (gr_k * (grid_price / 100.0)), 2)
+        d_effective_price_ct = round((d_cost_eur * 100.0 / tot_k), 1) if tot_k > 0 else grid_price
         
         try:
             dt_obj = datetime.strptime(d, "%Y-%m-%d")
@@ -164,7 +190,9 @@ def get_savings_summary():
             "grid_kwh": gr_k,
             "total_kwh": round(tot_k, 2),
             "autarky_percent": aut,
-            "savings_eur": sav_eur
+            "savings_eur": sav_eur,
+            "charging_cost_eur": d_cost_eur,
+            "effective_price_ct_kwh": d_effective_price_ct
         })
 
     return {
@@ -176,12 +204,19 @@ def get_savings_summary():
         "total_charged_kwh": round(total_charged, 2),
         "autarky_percent": autarky_pct,
         "total_savings_eur": total_savings_eur,
+        "total_charging_cost_eur": total_charging_cost_eur,
+        "effective_price_ct_kwh": effective_price_ct_kwh,
         "co2_saved_kg": co2_saved_kg,
+        "start_date": start_fmt,
+        "end_date": end_fmt,
+        "period_str": period_str,
         "today_pv_kwh": today_pv,
         "today_grid_kwh": today_grid,
         "today_total_kwh": round(today_charged, 2),
         "today_autarky_percent": today_autarky,
         "today_savings_eur": today_savings_eur,
+        "today_charging_cost_eur": today_charging_cost_eur,
+        "today_effective_price_ct_kwh": today_effective_price_ct_kwh,
         "daily_history": daily_history
     }
 
@@ -862,6 +897,7 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
                     global_savings["total_pv_kwh"] = 0.0
                     global_savings["total_grid_kwh"] = 0.0
                     global_savings["daily"] = {}
+                    global_savings["start_date"] = datetime.now().strftime("%Y-%m-%d")
                 save_savings(global_savings)
             self.send_json_response({"success": True, "savings": get_savings_summary()})
 
