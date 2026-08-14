@@ -674,7 +674,6 @@ def run_pv_controller():
             pause_until_str = cfg.get("pause_until", "")
             is_paused_by_user = False
             pause_until_dt = None
-
             if pause_until_str:
                 try:
                     pause_until_dt = datetime.fromisoformat(pause_until_str)
@@ -690,14 +689,12 @@ def run_pv_controller():
                     print(f"[PV-Controller] Fehler beim Parsen von pause_until ({pause_until_str}): {e}")
 
             if is_paused_by_user and pause_until_dt:
-                target_frc = 1  # Force Off (Pausiert)
                 target_amp = min_pv_amp
-                is_charging_session_active = False
-                off_delay_start_time = 0
+                target_frc = 1  # Force Off / Paused
                 remaining_sec = int((pause_until_dt - now_dt).total_seconds())
-                rem_h = remaining_sec // 3600
-                rem_m = (remaining_sec % 3600) // 60
-                rem_str = f"{rem_h} Std. {rem_m} Min." if rem_h > 0 else f"{rem_m} Min."
+                rem_hours = remaining_sec // 3600
+                rem_mins = (remaining_sec % 3600) // 60
+                rem_str = f"{rem_hours} Std. {rem_mins} Min." if rem_hours > 0 else f"{rem_mins} Min."
                 msg = f"⏸️ Laden manuell pausiert bis {pause_until_dt.strftime('%d.%m.%Y um %H:%M')} Uhr (noch {rem_str})"
             elif mode == "normal":
                 target_frc = 2  # Force On
@@ -982,23 +979,6 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    daemon_threads = True
-    allow_reuse_address = True
-
-    def __init__(self, server_address, RequestHandlerClass, ssl_ctx=None):
-        self.ssl_ctx = ssl_ctx
-        super().__init__(server_address, RequestHandlerClass)
-
-    def get_request(self):
-        newsocket, fromaddr = super().get_request()
-        if self.ssl_ctx:
-            try:
-                newsocket = self.ssl_ctx.wrap_socket(newsocket, server_side=True)
-            except Exception:
-                pass
-        return newsocket, fromaddr
-
 def main():
     port = global_config.get("server_port", 8080)
     
@@ -1008,13 +988,12 @@ def main():
     web_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(web_dir)
     
-    ssl_ctx = None
-    if os.path.exists(SERVER_CRT) and os.path.exists(SERVER_KEY):
-        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ssl_ctx.load_cert_chain(certfile=SERVER_CRT, keyfile=SERVER_KEY)
-
-    with ThreadingTCPServer(("", port), AppRequestHandler, ssl_ctx=ssl_ctx) as httpd:
-        if ssl_ctx:
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.TCPServer(("", port), AppRequestHandler) as httpd:
+        if os.path.exists(SERVER_CRT) and os.path.exists(SERVER_KEY):
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(certfile=SERVER_CRT, keyfile=SERVER_KEY)
+            httpd.socket = ssl_ctx.wrap_socket(httpd.socket, server_side=True)
             print(f"==================================================")
             print(f"   Go-e & SolarEdge PV Steuerungs-Server gestartet!")
             print(f"   HTTPS Website erreichbar unter: https://localhost:{port}")
@@ -1031,4 +1010,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

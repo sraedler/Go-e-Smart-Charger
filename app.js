@@ -136,37 +136,47 @@ function syncConfigUI(cfg) {
         chkSmoothing.checked = cfg.enable_smoothing !== false;
     }
 
-    // Pause Until UI
+    // Handle pause_until status & banner
     const pauseBanner = document.getElementById("active-pause-banner");
+    const pauseControls = document.getElementById("pause-controls");
     const inputPause = document.getElementById("input-pause-until");
 
     if (cfg.pause_until) {
         const pauseDt = new Date(cfg.pause_until);
-        const now = new Date();
-        if (pauseDt > now) {
-            if (pauseBanner) pauseBanner.style.display = "flex";
-            
+        const nowDt = new Date();
+        if (pauseDt > nowDt) {
             const pad = (n) => String(n).padStart(2, '0');
-            const dayFmt = `${pad(pauseDt.getDate())}.${pad(pauseDt.getMonth() + 1)}.${pauseDt.getFullYear()} um ${pad(pauseDt.getHours())}:${pad(pauseDt.getMinutes())}`;
-            const titleEl = document.getElementById("pause-banner-title");
-            if (titleEl) titleEl.innerText = `Laden pausiert bis ${dayFmt} Uhr`;
+            const formattedUntil = `${pad(pauseDt.getDate())}.${pad(pauseDt.getMonth()+1)}.${pauseDt.getFullYear()} um ${pad(pauseDt.getHours())}:${pad(pauseDt.getMinutes())}`;
+            
+            const diffMs = pauseDt - nowDt;
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            
+            let remText = "";
+            if (diffHours > 0) {
+                remText = `noch ${diffHours} Std. ${diffMins} Min.`;
+            } else {
+                remText = `noch ${diffMins} Min.`;
+            }
 
-            const diffMs = pauseDt - now;
-            const diffMinTotal = Math.floor(diffMs / 60000);
-            const hours = Math.floor(diffMinTotal / 60);
-            const mins = diffMinTotal % 60;
-            const remStr = hours > 0 ? `noch ${hours} Std. ${mins} Min.` : `noch ${mins} Min.`;
-            const countEl = document.getElementById("pause-banner-countdown");
-            if (countEl) countEl.innerText = remStr;
+            const titleEl = document.getElementById("pause-banner-title");
+            const countdownEl = document.getElementById("pause-banner-countdown");
+            if (titleEl) titleEl.innerText = `Laden pausiert bis ${formattedUntil} Uhr`;
+            if (countdownEl) countdownEl.innerText = remText;
+
+            if (pauseBanner) pauseBanner.style.display = "flex";
+            if (pauseControls) pauseControls.style.display = "none";
         } else {
             if (pauseBanner) pauseBanner.style.display = "none";
+            if (pauseControls) pauseControls.style.display = "block";
         }
     } else {
         if (pauseBanner) pauseBanner.style.display = "none";
+        if (pauseControls) pauseControls.style.display = "block";
     }
 
-    if (inputPause && document.activeElement !== inputPause && !inputPause.value) {
-        const defaultDt = new Date(Date.now() + 2 * 3600 * 1000);
+    if (inputPause && !cfg.pause_until && document.activeElement !== inputPause) {
+        const defaultDt = new Date(Date.now() + 3600000);
         const pad = (n) => String(n).padStart(2, '0');
         inputPause.value = `${defaultDt.getFullYear()}-${pad(defaultDt.getMonth()+1)}-${pad(defaultDt.getDate())}T${pad(defaultDt.getHours())}:${pad(defaultDt.getMinutes())}`;
     }
@@ -499,6 +509,99 @@ function saveSmoothingConfig() {
     });
 }
 
+// Pause Until Functions
+function submitPauseUntil() {
+    const input = document.getElementById("input-pause-until");
+    if (!input || !input.value) {
+        alert("Bitte wählen Sie ein Datum und eine Uhrzeit aus.");
+        return;
+    }
+
+    const dt = new Date(input.value);
+    if (isNaN(dt.getTime())) {
+        alert("Ungültiges Datum gewählt.");
+        return;
+    }
+
+    if (dt <= new Date()) {
+        alert("Der Zeitpunkt für die Pause muss in der Zukunft liegen.");
+        return;
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const isoStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+
+    fetch("/api/pause_until", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pause_until: isoStr })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            fetchStatus();
+        }
+    })
+    .catch(err => console.error("Fehler beim Setzen der Ladepause:", err));
+}
+
+function cancelPauseUntil() {
+    fetch("/api/pause_until", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pause_until: "" })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            fetchStatus();
+        }
+    })
+    .catch(err => console.error("Fehler beim Beenden der Ladepause:", err));
+}
+
+function setPausePresetTargetDay(daysAhead, targetHour) {
+    const now = new Date();
+    const target = new Date();
+    target.setDate(now.getDate() + daysAhead);
+    target.setHours(targetHour, 0, 0, 0);
+
+    if (target <= now) {
+        alert("Dieser Zeitpunkt liegt bereits in der Vergangenheit.");
+        return;
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const val = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}T${pad(targetHour)}:00`;
+    
+    const input = document.getElementById("input-pause-until");
+    if (input) {
+        input.value = val;
+    }
+}
+
+function updatePausePresetsValidity() {
+    const now = new Date();
+    const checkPreset = (btnId, daysAhead, hour) => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        const target = new Date();
+        target.setDate(now.getDate() + daysAhead);
+        target.setHours(hour, 0, 0, 0);
+
+        if (target <= now) {
+            btn.classList.add("disabled");
+        } else {
+            btn.classList.remove("disabled");
+        }
+    };
+
+    checkPreset("btn-preset-today-10", 0, 10);
+    checkPreset("btn-preset-today-15", 0, 15);
+    checkPreset("btn-preset-tomorrow-10", 1, 10);
+    checkPreset("btn-preset-tomorrow-15", 1, 15);
+}
+
 // PV Charging Savings & Statistics UI
 let savingsBarChartInstance = null;
 let autarkyDonutChartInstance = null;
@@ -767,104 +870,4 @@ function syncVkwFeedinPrice() {
             }
         })
         .catch(err => console.error("Fehler beim Abrufen des VKW Tarifs:", err));
-}
-
-// --- Go-e Pause Until Datetime Functions ---
-function submitPauseUntil() {
-    const inputEl = document.getElementById("input-pause-until");
-    if (!inputEl || !inputEl.value) {
-        alert("Bitte wähle ein Datum und eine Uhrzeit aus.");
-        return;
-    }
-
-    const selectedDt = new Date(inputEl.value);
-    if (isNaN(selectedDt.getTime())) {
-        alert("Ungültiges Datum/Uhrzeit Formular.");
-        return;
-    }
-
-    if (selectedDt <= new Date()) {
-        alert("Die Pausierungszeit muss in der Zukunft liegen.");
-        return;
-    }
-
-    const isoStr = inputEl.value; // YYYY-MM-DDTHH:mm
-    fetch("/api/pause_until", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pause_until: isoStr })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            fetchStatus();
-        }
-    })
-    .catch(err => console.error("Fehler beim Pausieren:", err));
-}
-
-function cancelPauseUntil() {
-    fetch("/api/pause_until", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pause_until: "" })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            fetchStatus();
-        }
-    })
-    .catch(err => console.error("Fehler beim Aufheben der Pause:", err));
-}
-
-function setPausePresetTargetDay(dayOffset, targetHour) {
-    const targetDt = new Date();
-    targetDt.setDate(targetDt.getDate() + dayOffset);
-    targetDt.setHours(targetHour, 0, 0, 0);
-
-    const now = new Date();
-    if (targetDt <= now) {
-        alert(`${dayOffset === 0 ? 'Heute' : 'Morgen'} ${targetHour}:00 Uhr liegt bereits in der Vergangenheit.`);
-        return;
-    }
-
-    const pad = (n) => String(n).padStart(2, '0');
-    const isoStr = `${targetDt.getFullYear()}-${pad(targetDt.getMonth()+1)}-${pad(targetDt.getDate())}T${pad(targetDt.getHours())}:00`;
-    
-    const inputEl = document.getElementById("input-pause-until");
-    if (inputEl) inputEl.value = isoStr;
-    submitPauseUntil();
-}
-
-function updatePausePresetsValidity() {
-    const now = new Date();
-    const today10 = new Date();
-    today10.setHours(10, 0, 0, 0);
-
-    const today15 = new Date();
-    today15.setHours(15, 0, 0, 0);
-
-    const btnToday10 = document.getElementById("btn-preset-today-10");
-    const btnToday15 = document.getElementById("btn-preset-today-15");
-
-    if (btnToday10) {
-        if (now >= today10) {
-            btnToday10.classList.add("disabled");
-            btnToday10.title = "10:00 Uhr heute liegt bereits in der Vergangenheit";
-        } else {
-            btnToday10.classList.remove("disabled");
-            btnToday10.title = "";
-        }
-    }
-
-    if (btnToday15) {
-        if (now >= today15) {
-            btnToday15.classList.add("disabled");
-            btnToday15.title = "15:00 Uhr heute liegt bereits in der Vergangenheit";
-        } else {
-            btnToday15.classList.remove("disabled");
-            btnToday15.title = "";
-        }
-    }
 }
