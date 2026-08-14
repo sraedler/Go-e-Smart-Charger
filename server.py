@@ -268,12 +268,26 @@ system_status = {
     "history": []
 }
 
+def safe_urlopen(req_or_url, timeout=10):
+    """Safely executes an HTTP/HTTPS request, using default CA context first and unverified SSL context fallback if CA certificates are missing in container environments."""
+    if isinstance(req_or_url, str):
+        req = urllib.request.Request(req_or_url, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
+    else:
+        req = req_or_url
+
+    try:
+        ctx = ssl.create_default_context()
+        return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+    except Exception:
+        ctx = ssl._create_unverified_context()
+        return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+
 # --- VKW Dynamic Feed-in Tariff Fetcher ---
 def fetch_vkw_tariff_data():
     try:
         url = "https://api.awattar.at/v1/marketdata"
         req = urllib.request.Request(url, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with safe_urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode('utf-8')).get('data', [])
         
         vkw_deduction_ct = 0.60  # 0.60 ct/kWh VKW Abschlag
@@ -330,24 +344,26 @@ def fetch_vkw_tariff_data():
 # --- SolarEdge API Fetcher ---
 def fetch_solaredge_data(api_key, site_id):
     url = f"https://monitoringapi.solaredge.com/site/{site_id}/currentPowerFlow?api_key={api_key}"
-    ctx = ssl.create_default_context()
     req = urllib.request.Request(url, headers={'User-Agent': 'GoEPVSteuerung/1.0'})
     try:
-        with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+        with safe_urlopen(req, timeout=10) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode('utf-8'))
                 flow = data.get("siteCurrentPowerFlow", {})
                 
-                pv_w = float(flow.get("PV", {}).get("currentPower", 0)) * 1000.0
-                load_w = float(flow.get("LOAD", {}).get("currentPower", 0)) * 1000.0
-                grid_w = float(flow.get("GRID", {}).get("currentPower", 0)) * 1000.0
+                unit = str(flow.get("unit", "kW")).strip().upper()
+                unit_mult = 1.0 if unit == "W" else 1000.0
+                
+                pv_w = float(flow.get("PV", {}).get("currentPower", 0)) * unit_mult
+                load_w = float(flow.get("LOAD", {}).get("currentPower", 0)) * unit_mult
+                grid_w = float(flow.get("GRID", {}).get("currentPower", 0)) * unit_mult
                 
                 connections = flow.get("connections", [])
                 grid_is_export = False
                 grid_is_import = False
                 for conn in connections:
-                    frm = conn.get("from", "").upper()
-                    to = conn.get("to", "").upper()
+                    frm = str(conn.get("from", "")).upper()
+                    to = str(conn.get("to", "")).upper()
                     if frm in ["PV", "LOAD"] and to == "GRID":
                         grid_is_export = True
                     elif frm == "GRID" and to in ["LOAD", "PV"]:
@@ -888,6 +904,11 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/vkw_tariff":
             res = fetch_vkw_tariff_data()
             self.send_json_response(res)
+
+        elif path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
 
         else:
             if path == "/":

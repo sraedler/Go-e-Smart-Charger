@@ -1,6 +1,12 @@
 # Verwende ein schlankes Python-Base-Image
 FROM python:3.12-slim
 
+# Installiere Zertifikate und Zeitzonen für zuverlässige HTTPS-Abrufe (SolarEdge & VKW)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 # Arbeitsverzeichnis im Container festlegen
 WORKDIR /app
 
