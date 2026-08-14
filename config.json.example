@@ -1,8 +1,8 @@
 {
   "goe_ip": "192.168.100.67",
-  "solaredge_api_key": "UAE8KFFWY50TYUBLMLHASRBYHI965DC1",
-  "solaredge_site_id": "4353282",
-  "mode": "pv_boerse",
+  "solaredge_api_key": "YOUR_SOLAREDGE_API_KEY",
+  "solaredge_site_id": "YOUR_SITE_ID",
+  "mode": "pv",
   "pv_threshold_watt": 0,
   "normal_ampere": 16,
   "min_pv_ampere": 6,
@@ -15,5 +15,5 @@
   "off_delay_seconds": 180,
   "min_pause_seconds": 120,
   "enable_smoothing": true,
-  "pause_until": "2026-08-15T12:00"
+  "pause_until": ""
 }

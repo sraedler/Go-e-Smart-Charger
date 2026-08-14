@@ -1,0 +1,8 @@
+{
+  "grid_price_ct": 30.0,
+  "feedin_price_ct": 7.0,
+  "total_pv_kwh": 0.0,
+  "total_grid_kwh": 0.0,
+  "start_date": "2026-08-14",
+  "daily": {}
+}
