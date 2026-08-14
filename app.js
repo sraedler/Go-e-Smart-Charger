@@ -274,13 +274,31 @@ function updateControllerUI(ctrl) {
     const availableW = ctrl.effective_available_w || 0;
 
     const elSurplus = document.getElementById("val-pv-surplus");
-    if (elSurplus) elSurplus.innerText = formatPower(surplusW);
+    if (elSurplus) {
+        elSurplus.innerText = formatPower(surplusW);
+        if (surplusW < 0) {
+            elSurplus.style.color = "#ff4d4d";
+        } else if (surplusW > 0) {
+            elSurplus.style.color = "#00e676";
+        } else {
+            elSurplus.style.color = "#ffffff";
+        }
+    }
 
     const elAvail = document.getElementById("val-effective-available");
     if (elAvail) elAvail.innerText = formatPower(availableW);
     
     const mobileStickySurplus = document.getElementById("mobile-sticky-surplus");
-    if (mobileStickySurplus) mobileStickySurplus.innerText = formatPower(surplusW);
+    if (mobileStickySurplus) {
+        mobileStickySurplus.innerText = formatPower(surplusW);
+        if (surplusW < 0) {
+            mobileStickySurplus.style.color = "#ff4d4d";
+        } else if (surplusW > 0) {
+            mobileStickySurplus.style.color = "#00e676";
+        } else {
+            mobileStickySurplus.style.color = "#00e676";
+        }
+    }
 
     const bannerText = document.getElementById("controller-banner-text");
     if (bannerText && ctrl.status_message) {

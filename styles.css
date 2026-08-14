@@ -643,6 +643,15 @@ input[type=range]::-webkit-slider-thumb:active {
 .sum-value {
     font-weight: 700;
     margin-left: 6px;
+    transition: color 0.3s ease;
+}
+
+.sum-value.negative {
+    color: #ff4d4d;
+}
+
+.sum-value.positive {
+    color: #00e676;
 }
 
 .sum-value.highlight {
