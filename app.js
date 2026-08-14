@@ -184,33 +184,49 @@ function syncConfigUI(cfg) {
     updatePausePresetsValidity();
 }
 
+// Smart Power Formatter (e.g. "350 W" vs "2.85 kW")
+function formatPower(w) {
+    if (w === undefined || w === null || isNaN(w)) return "0 W";
+    const absW = Math.abs(w);
+    if (absW >= 1000) {
+        return `${(w / 1000.0).toFixed(2)} kW`;
+    } else {
+        return `${Math.round(w)} W`;
+    }
+}
+
 // Update SolarEdge Solar & Power Flow UI
 function updateSolarEdgeUI(se) {
     if (!se) return;
     
-    const pvKw = (se.pv_power_w / 1000.0).toFixed(2);
-    const loadKw = (se.load_power_w / 1000.0).toFixed(2);
+    const pvW = se.pv_power_w || 0;
+    const loadW = se.load_power_w || 0;
     const gridW = se.grid_power_w || 0;
-    const gridKw = (Math.abs(gridW) / 1000.0).toFixed(2);
 
-    document.getElementById("val-pv-power").innerText = `${pvKw} kW`;
-    document.getElementById("val-load-power").innerText = `${loadKw} kW`;
+    const elPv = document.getElementById("val-pv-power");
+    if (elPv) elPv.innerText = formatPower(pvW);
+
+    const elLoad = document.getElementById("val-load-power");
+    if (elLoad) elLoad.innerText = formatPower(loadW);
     
     const gridLabel = document.getElementById("label-grid");
     const gridVal = document.getElementById("val-grid-power");
     
-    if (gridW >= 0) {
-        gridLabel.innerText = "Netzeinspeisung";
-        gridVal.innerText = `${gridKw} kW`;
-        gridVal.style.color = "#00e676";
-    } else {
-        gridLabel.innerText = "Netzbezug";
-        gridVal.innerText = `${gridKw} kW`;
-        gridVal.style.color = "#ff9100";
+    if (gridLabel && gridVal) {
+        if (gridW >= 0) {
+            gridLabel.innerText = "Netzeinspeisung";
+            gridVal.innerText = formatPower(gridW);
+            gridVal.style.color = "#00e676";
+        } else {
+            gridLabel.innerText = "Netzbezug";
+            gridVal.innerText = formatPower(Math.abs(gridW));
+            gridVal.style.color = "#ff9100";
+        }
     }
 
     if (se.last_update) {
-        document.getElementById("solaredge-update-time").innerText = `Letztes Update: ${se.last_update}`;
+        const timeEl = document.getElementById("solaredge-update-time");
+        if (timeEl) timeEl.innerText = `Letztes Update: ${se.last_update}`;
     }
 }
 
@@ -218,27 +234,35 @@ function updateSolarEdgeUI(se) {
 function updateGoEUI(goe) {
     if (!goe) return;
 
-    const carPowerKw = (goe.charging_power_w / 1000.0).toFixed(2);
-    document.getElementById("val-car-power").innerText = `${carPowerKw} kW`;
-    document.getElementById("val-goe-power").innerText = `${carPowerKw} kW`;
+    const carPowerW = goe.charging_power_w || 0;
+    const elCarPower = document.getElementById("val-car-power");
+    if (elCarPower) elCarPower.innerText = formatPower(carPowerW);
 
-    document.getElementById("val-goe-amp").innerText = `${goe.ampere || '--'} A`;
-    document.getElementById("val-goe-kwh").innerText = `${goe.total_kwh || '0.0'} kWh`;
+    const elGoePower = document.getElementById("val-goe-power");
+    if (elGoePower) elGoePower.innerText = formatPower(carPowerW);
+
+    const elAmp = document.getElementById("val-goe-amp");
+    if (elAmp) elAmp.innerText = `${goe.ampere || '--'} A`;
+
+    const elKwh = document.getElementById("val-goe-kwh");
+    if (elKwh) elKwh.innerText = `${goe.total_kwh || '0.0'} kWh`;
 
     const phases = goe.phase_mode === 1 ? "1-phasig" : (goe.phase_mode === 2 ? "3-phasig" : "Auto");
-    document.getElementById("val-goe-phases").innerText = phases;
+    const elPhases = document.getElementById("val-goe-phases");
+    if (elPhases) elPhases.innerText = phases;
 
     const stateTag = document.getElementById("wallbox-state-tag");
-    stateTag.innerText = goe.car_state_text || "Unbekannt";
-    
-    if (goe.car_state === 2) {
-        stateTag.style.background = "rgba(0, 230, 118, 0.2)";
-        stateTag.style.color = "#00e676";
-        stateTag.style.borderColor = "#00e676";
-    } else {
-        stateTag.style.background = "rgba(255, 255, 255, 0.08)";
-        stateTag.style.color = "var(--text-main)";
-        stateTag.style.borderColor = "var(--card-border)";
+    if (stateTag) {
+        stateTag.innerText = goe.car_state_text || "Unbekannt";
+        if (goe.car_state === 2) {
+            stateTag.style.background = "rgba(0, 230, 118, 0.2)";
+            stateTag.style.color = "#00e676";
+            stateTag.style.borderColor = "#00e676";
+        } else {
+            stateTag.style.background = "rgba(255, 255, 255, 0.08)";
+            stateTag.style.color = "var(--text-main)";
+            stateTag.style.borderColor = "var(--card-border)";
+        }
     }
 }
 
@@ -246,17 +270,20 @@ function updateGoEUI(goe) {
 function updateControllerUI(ctrl) {
     if (!ctrl) return;
 
-    const surplusRounded = Math.round(ctrl.calculated_surplus_w || 0);
-    const availableRounded = Math.round(ctrl.effective_available_w || 0);
+    const surplusW = ctrl.calculated_surplus_w || 0;
+    const availableW = ctrl.effective_available_w || 0;
 
-    document.getElementById("val-pv-surplus").innerText = `${surplusRounded} W`;
-    document.getElementById("val-effective-available").innerText = `${availableRounded} W`;
+    const elSurplus = document.getElementById("val-pv-surplus");
+    if (elSurplus) elSurplus.innerText = formatPower(surplusW);
+
+    const elAvail = document.getElementById("val-effective-available");
+    if (elAvail) elAvail.innerText = formatPower(availableW);
     
     const mobileStickySurplus = document.getElementById("mobile-sticky-surplus");
-    if (mobileStickySurplus) mobileStickySurplus.innerText = `${surplusRounded} W`;
+    if (mobileStickySurplus) mobileStickySurplus.innerText = formatPower(surplusW);
 
     const bannerText = document.getElementById("controller-banner-text");
-    if (ctrl.status_message) {
+    if (bannerText && ctrl.status_message) {
         bannerText.innerText = ctrl.status_message;
     }
 }
