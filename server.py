@@ -35,7 +35,8 @@ default_config = {
     "auto_wakeup": True,
     "off_delay_seconds": 180,
     "min_pause_seconds": 120,
-    "enable_smoothing": True
+    "enable_smoothing": True,
+    "pause_until": ""
 }
 
 def load_config():
@@ -669,7 +670,36 @@ def run_pv_controller():
 
             min_run_time_sec = 300 # 5 minutes minimum runtime
 
-            if mode == "normal":
+            # Check manual pause_until schedule
+            pause_until_str = cfg.get("pause_until", "")
+            is_paused_by_user = False
+            pause_until_dt = None
+
+            if pause_until_str:
+                try:
+                    pause_until_dt = datetime.fromisoformat(pause_until_str)
+                    if now_dt < pause_until_dt:
+                        is_paused_by_user = True
+                    else:
+                        with config_lock:
+                            global_config["pause_until"] = ""
+                            save_config(global_config)
+                        print(f"[{now_dt.strftime('%Y-%m-%d %H:%M:%S')}] [PV-Controller] Manuelle Ladepause abgelaufen ({pause_until_str}) - Laden wieder freigegeben.")
+                        pause_until_str = ""
+                except Exception as e:
+                    print(f"[PV-Controller] Fehler beim Parsen von pause_until ({pause_until_str}): {e}")
+
+            if is_paused_by_user and pause_until_dt:
+                target_frc = 1  # Force Off (Pausiert)
+                target_amp = min_pv_amp
+                is_charging_session_active = False
+                off_delay_start_time = 0
+                remaining_sec = int((pause_until_dt - now_dt).total_seconds())
+                rem_h = remaining_sec // 3600
+                rem_m = (remaining_sec % 3600) // 60
+                rem_str = f"{rem_h} Std. {rem_m} Min." if rem_h > 0 else f"{rem_m} Min."
+                msg = f"⏸️ Laden manuell pausiert bis {pause_until_dt.strftime('%d.%m.%Y um %H:%M')} Uhr (noch {rem_str})"
+            elif mode == "normal":
                 target_frc = 2  # Force On
                 target_amp = normal_amp
                 if phases_setting in ["auto", "3"]:
@@ -881,11 +911,18 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/api/config":
             with config_lock:
-                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting", "midnight_reset", "auto_wakeup", "off_delay_seconds", "min_pause_seconds", "enable_smoothing"]:
+                for k in ["goe_ip", "mode", "pv_threshold_watt", "normal_ampere", "min_pv_ampere", "max_pv_ampere", "solaredge_poll_seconds", "phases_setting", "midnight_reset", "auto_wakeup", "off_delay_seconds", "min_pause_seconds", "enable_smoothing", "pause_until"]:
                     if k in data:
                         global_config[k] = data[k]
                 save_config(global_config)
             self.send_json_response({"success": True, "config": global_config})
+
+        elif path == "/api/pause_until":
+            pause_val = data.get("pause_until", "")
+            with config_lock:
+                global_config["pause_until"] = pause_val if pause_val else ""
+                save_config(global_config)
+            self.send_json_response({"success": True, "pause_until": global_config["pause_until"], "config": global_config})
 
         elif path == "/api/savings/config":
             with savings_lock:
@@ -945,6 +982,23 @@ class AppRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(self, server_address, RequestHandlerClass, ssl_ctx=None):
+        self.ssl_ctx = ssl_ctx
+        super().__init__(server_address, RequestHandlerClass)
+
+    def get_request(self):
+        newsocket, fromaddr = super().get_request()
+        if self.ssl_ctx:
+            try:
+                newsocket = self.ssl_ctx.wrap_socket(newsocket, server_side=True)
+            except Exception:
+                pass
+        return newsocket, fromaddr
+
 def main():
     port = global_config.get("server_port", 8080)
     
@@ -954,12 +1008,13 @@ def main():
     web_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(web_dir)
     
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", port), AppRequestHandler) as httpd:
-        if os.path.exists(SERVER_CRT) and os.path.exists(SERVER_KEY):
-            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ssl_ctx.load_cert_chain(certfile=SERVER_CRT, keyfile=SERVER_KEY)
-            httpd.socket = ssl_ctx.wrap_socket(httpd.socket, server_side=True)
+    ssl_ctx = None
+    if os.path.exists(SERVER_CRT) and os.path.exists(SERVER_KEY):
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_ctx.load_cert_chain(certfile=SERVER_CRT, keyfile=SERVER_KEY)
+
+    with ThreadingTCPServer(("", port), AppRequestHandler, ssl_ctx=ssl_ctx) as httpd:
+        if ssl_ctx:
             print(f"==================================================")
             print(f"   Go-e & SolarEdge PV Steuerungs-Server gestartet!")
             print(f"   HTTPS Website erreichbar unter: https://localhost:{port}")
@@ -976,3 +1031,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

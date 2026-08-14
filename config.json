@@ -14,5 +14,6 @@
   "auto_wakeup": true,
   "off_delay_seconds": 180,
   "min_pause_seconds": 120,
-  "enable_smoothing": true
+  "enable_smoothing": true,
+  "pause_until": "2026-08-15T12:00"
 }

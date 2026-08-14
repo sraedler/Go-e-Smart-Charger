@@ -135,6 +135,43 @@ function syncConfigUI(cfg) {
     if (chkSmoothing && document.activeElement !== chkSmoothing) {
         chkSmoothing.checked = cfg.enable_smoothing !== false;
     }
+
+    // Pause Until UI
+    const pauseBanner = document.getElementById("active-pause-banner");
+    const inputPause = document.getElementById("input-pause-until");
+
+    if (cfg.pause_until) {
+        const pauseDt = new Date(cfg.pause_until);
+        const now = new Date();
+        if (pauseDt > now) {
+            if (pauseBanner) pauseBanner.style.display = "flex";
+            
+            const pad = (n) => String(n).padStart(2, '0');
+            const dayFmt = `${pad(pauseDt.getDate())}.${pad(pauseDt.getMonth() + 1)}.${pauseDt.getFullYear()} um ${pad(pauseDt.getHours())}:${pad(pauseDt.getMinutes())}`;
+            const titleEl = document.getElementById("pause-banner-title");
+            if (titleEl) titleEl.innerText = `Laden pausiert bis ${dayFmt} Uhr`;
+
+            const diffMs = pauseDt - now;
+            const diffMinTotal = Math.floor(diffMs / 60000);
+            const hours = Math.floor(diffMinTotal / 60);
+            const mins = diffMinTotal % 60;
+            const remStr = hours > 0 ? `noch ${hours} Std. ${mins} Min.` : `noch ${mins} Min.`;
+            const countEl = document.getElementById("pause-banner-countdown");
+            if (countEl) countEl.innerText = remStr;
+        } else {
+            if (pauseBanner) pauseBanner.style.display = "none";
+        }
+    } else {
+        if (pauseBanner) pauseBanner.style.display = "none";
+    }
+
+    if (inputPause && document.activeElement !== inputPause && !inputPause.value) {
+        const defaultDt = new Date(Date.now() + 2 * 3600 * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        inputPause.value = `${defaultDt.getFullYear()}-${pad(defaultDt.getMonth()+1)}-${pad(defaultDt.getDate())}T${pad(defaultDt.getHours())}:${pad(defaultDt.getMinutes())}`;
+    }
+
+    updatePausePresetsValidity();
 }
 
 // Update SolarEdge Solar & Power Flow UI
@@ -730,4 +767,104 @@ function syncVkwFeedinPrice() {
             }
         })
         .catch(err => console.error("Fehler beim Abrufen des VKW Tarifs:", err));
+}
+
+// --- Go-e Pause Until Datetime Functions ---
+function submitPauseUntil() {
+    const inputEl = document.getElementById("input-pause-until");
+    if (!inputEl || !inputEl.value) {
+        alert("Bitte wähle ein Datum und eine Uhrzeit aus.");
+        return;
+    }
+
+    const selectedDt = new Date(inputEl.value);
+    if (isNaN(selectedDt.getTime())) {
+        alert("Ungültiges Datum/Uhrzeit Formular.");
+        return;
+    }
+
+    if (selectedDt <= new Date()) {
+        alert("Die Pausierungszeit muss in der Zukunft liegen.");
+        return;
+    }
+
+    const isoStr = inputEl.value; // YYYY-MM-DDTHH:mm
+    fetch("/api/pause_until", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pause_until: isoStr })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            fetchStatus();
+        }
+    })
+    .catch(err => console.error("Fehler beim Pausieren:", err));
+}
+
+function cancelPauseUntil() {
+    fetch("/api/pause_until", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pause_until: "" })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            fetchStatus();
+        }
+    })
+    .catch(err => console.error("Fehler beim Aufheben der Pause:", err));
+}
+
+function setPausePresetTargetDay(dayOffset, targetHour) {
+    const targetDt = new Date();
+    targetDt.setDate(targetDt.getDate() + dayOffset);
+    targetDt.setHours(targetHour, 0, 0, 0);
+
+    const now = new Date();
+    if (targetDt <= now) {
+        alert(`${dayOffset === 0 ? 'Heute' : 'Morgen'} ${targetHour}:00 Uhr liegt bereits in der Vergangenheit.`);
+        return;
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const isoStr = `${targetDt.getFullYear()}-${pad(targetDt.getMonth()+1)}-${pad(targetDt.getDate())}T${pad(targetDt.getHours())}:00`;
+    
+    const inputEl = document.getElementById("input-pause-until");
+    if (inputEl) inputEl.value = isoStr;
+    submitPauseUntil();
+}
+
+function updatePausePresetsValidity() {
+    const now = new Date();
+    const today10 = new Date();
+    today10.setHours(10, 0, 0, 0);
+
+    const today15 = new Date();
+    today15.setHours(15, 0, 0, 0);
+
+    const btnToday10 = document.getElementById("btn-preset-today-10");
+    const btnToday15 = document.getElementById("btn-preset-today-15");
+
+    if (btnToday10) {
+        if (now >= today10) {
+            btnToday10.classList.add("disabled");
+            btnToday10.title = "10:00 Uhr heute liegt bereits in der Vergangenheit";
+        } else {
+            btnToday10.classList.remove("disabled");
+            btnToday10.title = "";
+        }
+    }
+
+    if (btnToday15) {
+        if (now >= today15) {
+            btnToday15.classList.add("disabled");
+            btnToday15.title = "15:00 Uhr heute liegt bereits in der Vergangenheit";
+        } else {
+            btnToday15.classList.remove("disabled");
+            btnToday15.title = "";
+        }
+    }
 }

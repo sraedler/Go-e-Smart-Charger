@@ -442,6 +442,53 @@
                     </div>
                 </div>
 
+                <!-- Pause Until Datetime Panel -->
+                <div class="wallbox-pause-panel" id="wallbox-pause-panel">
+                    <div class="pause-panel-header">
+                        <h3><i class="fa-solid fa-circle-pause text-amber"></i> Laden Pausieren (Timer / Datum & Uhrzeit)</h3>
+                        <p class="field-hint">Pausiert das Laden gezielt bis zu einem bestimmten Zeitpunkt. Danach wird die automatische Regelung wieder freigegeben.</p>
+                    </div>
+
+                    <!-- Active Pause Banner (visible when pause is active) -->
+                    <div class="active-pause-banner" id="active-pause-banner" style="display: none;">
+                        <div class="pause-banner-content">
+                            <div class="pause-banner-icon"><i class="fa-solid fa-pause"></i></div>
+                            <div class="pause-banner-info">
+                                <strong id="pause-banner-title">Laden pausiert bis --.--.---- --:-- Uhr</strong>
+                                <span class="pause-countdown" id="pause-banner-countdown">noch -- Std. -- Min.</span>
+                            </div>
+                        </div>
+                        <button class="btn-cancel-pause" onclick="cancelPauseUntil()">
+                            <i class="fa-solid fa-play"></i> Pause beenden
+                        </button>
+                    </div>
+
+                    <!-- Pause Control Inputs -->
+                    <div class="pause-controls" id="pause-controls">
+                        <div class="pause-input-group">
+                            <input type="datetime-local" id="input-pause-until" class="custom-datetime-input">
+                            <button class="btn-pause-set" onclick="submitPauseUntil()">
+                                <i class="fa-solid fa-pause"></i> Pausieren
+                            </button>
+                        </div>
+                        <div class="pause-presets">
+                            <span class="preset-title"><i class="fa-solid fa-clock"></i> Schnellauswahl:</span>
+                            <button class="preset-chip" id="btn-preset-today-10" onclick="setPausePresetTargetDay(0, 10)">
+                                <i class="fa-regular fa-calendar-check"></i> Heute 10:00
+                            </button>
+                            <button class="preset-chip" id="btn-preset-today-15" onclick="setPausePresetTargetDay(0, 15)">
+                                <i class="fa-regular fa-calendar-check"></i> Heute 15:00
+                            </button>
+                            <button class="preset-chip" id="btn-preset-tomorrow-10" onclick="setPausePresetTargetDay(1, 10)">
+                                <i class="fa-regular fa-calendar-plus"></i> Morgen 10:00
+                            </button>
+                            <button class="preset-chip" id="btn-preset-tomorrow-15" onclick="setPausePresetTargetDay(1, 15)">
+                                <i class="fa-regular fa-calendar-plus"></i> Morgen 15:00
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="wakeup-action-panel">
                     <button class="btn-wakeup" id="btn-wakeup-car" onclick="wakeupCar()">
                         <i class="fa-solid fa-bolt-lightning"></i> Auto aufwecken (CP-Signal-Reset)
