@@ -136,6 +136,18 @@ function syncConfigUI(cfg) {
         chkSmoothing.checked = cfg.enable_smoothing !== false;
     }
 
+    const minAmpVal = cfg.min_pv_ampere !== undefined ? String(cfg.min_pv_ampere) : "6";
+    const selMinAmpTop = document.getElementById("select-min-pv-amp-top");
+    if (selMinAmpTop && document.activeElement !== selMinAmpTop) selMinAmpTop.value = minAmpVal;
+    const selMinAmp = document.getElementById("select-min-pv-amp");
+    if (selMinAmp && document.activeElement !== selMinAmp) selMinAmp.value = minAmpVal;
+
+    const phasesVal = cfg.phases_setting || "auto";
+    const selPhasesTop = document.getElementById("select-phases-setting-top");
+    if (selPhasesTop && document.activeElement !== selPhasesTop) selPhasesTop.value = phasesVal;
+    const selPhases = document.getElementById("select-phases-setting");
+    if (selPhases && document.activeElement !== selPhases) selPhases.value = phasesVal;
+
     // Handle pause_until status & banner
     const pauseBanner = document.getElementById("active-pause-banner");
     const pauseControls = document.getElementById("pause-controls");
@@ -551,6 +563,30 @@ function saveSmoothingConfig() {
         off_delay_seconds: offDelay,
         min_pause_seconds: minPause,
         enable_smoothing: enableSmoothing
+    });
+}
+
+function saveWallboxAdvancedConfig() {
+    const minAmpEl = document.getElementById("select-min-pv-amp");
+    const phasesEl = document.getElementById("select-phases-setting");
+    const minAmp = minAmpEl ? parseInt(minAmpEl.value, 10) : 6;
+    const phases = phasesEl ? phasesEl.value : "auto";
+
+    saveConfigToServer({
+        min_pv_ampere: minAmp,
+        phases_setting: phases
+    });
+}
+
+function saveWallboxAdvancedConfigFromTop(ampVal, phaseVal) {
+    const minAmpEl = document.getElementById("select-min-pv-amp-top");
+    const phasesEl = document.getElementById("select-phases-setting-top");
+    const minAmp = ampVal !== null && ampVal !== undefined ? parseInt(ampVal, 10) : (minAmpEl ? parseInt(minAmpEl.value, 10) : 6);
+    const phases = phaseVal !== null && phaseVal !== undefined ? phaseVal : (phasesEl ? phasesEl.value : "auto");
+
+    saveConfigToServer({
+        min_pv_ampere: minAmp,
+        phases_setting: phases
     });
 }
 

@@ -124,6 +124,39 @@
                         <button class="preset-chip" onclick="setThresholdPreset(10000)">10.0 kW</button>
                     </div>
 
+                    <!-- Mindestladestrom & Phasen-Einstellungen (Skoda Elroq / MEB Optimierung) -->
+                    <div class="pv-smoothing-box" style="margin-top: 16px;">
+                        <div class="smoothing-header">
+                            <label class="threshold-label"><i class="fa-solid fa-gauge-simple-high"></i> Mindestladestrom & Phasen (Skoda Elroq / MEB)</label>
+                            <p class="field-hint">Legt den minimalen Ladestrom für die PV-Laderegelung und den Aufweck-Impuls fest.</p>
+                        </div>
+                        <div class="smoothing-grid">
+                            <div class="smoothing-item">
+                                <label for="select-min-pv-amp-top"><i class="fa-solid fa-bolt"></i> Mindestladestrom PV:</label>
+                                <select id="select-min-pv-amp-top" class="custom-select" onchange="saveWallboxAdvancedConfigFromTop(this.value, null)">
+                                    <option value="6">6 A (1.38 kW 1-phasig / 4.14 kW 3-phasig)</option>
+                                    <option value="8">8 A (1.84 kW 1-phasig / 5.52 kW 3-phasig)</option>
+                                    <option value="10">10 A (2.30 kW 1-phasig / 6.90 kW 3-phasig)</option>
+                                    <option value="12">12 A (2.76 kW 1-phasig / 8.28 kW 3-phasig)</option>
+                                    <option value="14">14 A (3.22 kW 1-phasig / 9.66 kW 3-phasig)</option>
+                                    <option value="16">16 A (3.68 kW 1-phasig / 11.0 kW 3-phasig)</option>
+                                </select>
+                            </div>
+                            <div class="smoothing-item">
+                                <label for="select-phases-setting-top"><i class="fa-solid fa-code-branch"></i> Phasen-Modus:</label>
+                                <select id="select-phases-setting-top" class="custom-select" onchange="saveWallboxAdvancedConfigFromTop(null, this.value)">
+                                    <option value="auto">Auto (1- & 3-Phasen Umschaltung)</option>
+                                    <option value="1">1-phasig erzwingen (1.38 – 3.68 kW)</option>
+                                    <option value="3">3-phasig erzwingen (4.14 – 11.0 kW)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="elroq-wakeup-hint">
+                            <i class="fa-solid fa-circle-info text-cyan"></i>
+                            <span><strong>Skoda Elroq / MEB Aufweck-Optimierung:</strong> Aufwecken erfolgt automatisch 1-phasig mit 10 A ($2,3\text{ kW}$), damit das Fahrzeug-Schütz zuverlässig schließt. Bei höherem Überschuss ($\ge 4,14\text{ kW}$) schaltet die Steuerung danach dynamisch auf 3-phasig um.</span>
+                        </div>
+                    </div>
+
                     <!-- Smoothing & Delay Settings -->
                     <div class="pv-smoothing-box" id="pv-smoothing-box">
                         <div class="smoothing-header">
@@ -507,12 +540,42 @@
                             <button class="btn-secondary" id="btn-test-ip" onclick="testGoeIp()">Testen</button>
                         </div>
                     </div>
+                    
+                    <!-- Mindestladestrom & Phasen-Einstellungen (Skoda Elroq / MEB Optimierung) -->
+                    <div class="config-row-group">
+                        <div class="config-field">
+                            <label for="select-min-pv-amp"><i class="fa-solid fa-gauge-simple-high"></i> Mindestladestrom PV:</label>
+                            <select id="select-min-pv-amp" onchange="saveWallboxAdvancedConfig()">
+                                <option value="6">6 A (1.38 kW 1-phasig / 4.14 kW 3-phasig)</option>
+                                <option value="8">8 A (1.84 kW 1-phasig / 5.52 kW 3-phasig)</option>
+                                <option value="10">10 A (2.30 kW 1-phasig / 6.90 kW 3-phasig)</option>
+                                <option value="12">12 A (2.76 kW 1-phasig / 8.28 kW 3-phasig)</option>
+                                <option value="14">14 A (3.22 kW 1-phasig / 9.66 kW 3-phasig)</option>
+                                <option value="16">16 A (3.68 kW 1-phasig / 11.0 kW 3-phasig)</option>
+                            </select>
+                        </div>
+                        <div class="config-field">
+                            <label for="select-phases-setting"><i class="fa-solid fa-code-branch"></i> Phasen-Modus:</label>
+                            <select id="select-phases-setting" onchange="saveWallboxAdvancedConfig()">
+                                <option value="auto">Auto (1- & 3-Phasen Umschaltung)</option>
+                                <option value="1">1-phasig erzwingen (1.38 – 3.68 kW)</option>
+                                <option value="3">3-phasig erzwingen (4.14 – 11.0 kW)</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="checkbox-option">
                         <label>
                             <input type="checkbox" id="chk-auto-wakeup" onchange="toggleAutoWakeup(this.checked)">
                             <span>Automatisches Aufwecken aktivieren (bei PV-Überschuss & schlafendem Auto)</span>
                         </label>
                     </div>
+
+                    <div class="elroq-wakeup-hint">
+                        <i class="fa-solid fa-circle-info text-cyan"></i>
+                        <span><strong>Skoda Elroq / MEB Aufweck-Optimierung:</strong> Das Aufwecken erfolgt automatisch 1-phasig mit 10 A, damit das Fahrzeug-Schütz zuverlässig schließt. Bei ausreichend PV-Überschuss schaltet die Steuerung danach dynamisch auf 3-phasig um.</span>
+                    </div>
+
                     <p class="ip-feedback" id="ip-feedback-msg"></p>
                 </div>
             </section>

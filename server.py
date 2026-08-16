@@ -481,16 +481,16 @@ def set_goe_param(ip, params):
         except Exception as e_v1:
             return {"success": False, "error": f"v2 error: {e_v2}, v1 error: {e_v1}"}
 
-def wakeup_goe_car(ip):
-    """Triggers CP pulse (1 -> 0 -> 2 sequence) to wake up sleeping EV without manual car key/app intervention."""
+def wakeup_goe_car(ip, wakeup_amp=10):
+    """Triggers optimized CP pulse sequence tailored for MEB vehicles (Skoda Elroq/Enyaq, VW ID) to wake up sleeping EVs reliably."""
     if not ip or ip.strip() == "":
         return {"success": False, "error": "Keine IP angegeben"}
-    print(f"[Go-e] Sende 3-Stufen CP-Aufweckimpuls (frc=1 -> frc=0 -> frc=2) an {ip}...")
-    res1 = set_goe_param(ip, {"frc": 1})
-    time.sleep(4)
-    res2 = set_goe_param(ip, {"frc": 0})
-    time.sleep(4)
-    res3 = set_goe_param(ip, {"frc": 2})  # Force ON (Aktiviert das Schütz im Fahrzeug)
+    print(f"[Go-e] Sende optimierten CP-Aufweckimpuls (1-phasig, {wakeup_amp}A) für Skoda Elroq / MEB an {ip}...")
+    res1 = set_goe_param(ip, {"frc": 1, "psm": 1})
+    time.sleep(3)
+    res2 = set_goe_param(ip, {"amp": wakeup_amp, "psm": 1, "frc": 0})
+    time.sleep(2)
+    res3 = set_goe_param(ip, {"frc": 2, "amp": wakeup_amp, "psm": 1})
     return {"success": True, "res_stop": res1, "res_neutral": res2, "res_start": res3}
 
 # --- Background Controller Loop ---
@@ -824,12 +824,14 @@ def run_pv_controller():
                 if cfg.get("auto_wakeup", True):
                     car_st = system_status["goe"]["car_state"]
                     chg_w = system_status["goe"]["charging_power_w"]
+                    min_pv_amp = int(cfg.get("min_pv_ampere", 6))
+                    wakeup_amp = max(10, min_pv_amp)
                     if target_frc in [0, 2] and available_w >= min_power and car_st in [3, 4] and chg_w == 0:
                         car_sleep_count += 1
-                        if car_sleep_count >= 2 and (now - last_auto_wakeup_time) > 600:
-                            print(f"[PV-Controller] Auto-Aufwecken ausgelöst für schlafendes Auto (State {car_st})...")
-                            msg += " ⚡ (Auto schläft - CP-Aufweckimpuls gesendet)"
-                            wakeup_goe_car(goe_ip)
+                        if car_sleep_count >= 2 and (now - last_auto_wakeup_time) > 120:
+                            print(f"[PV-Controller] Auto-Aufwecken ausgelöst für schlafendes Auto (State {car_st}, Skoda Elroq/MEB 1-Phasen 10A CP-Impuls)...")
+                            msg += f" ⚡ (Skoda Elroq / Auto schläft - 1-Phasen CP-Aufweckimpuls {wakeup_amp}A gesendet)"
+                            wakeup_goe_car(goe_ip, wakeup_amp=wakeup_amp)
                             last_auto_wakeup_time = now
                             car_sleep_count = 0
                     else:

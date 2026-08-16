@@ -969,6 +969,69 @@ input[type=range]::-webkit-slider-thumb:active {
     gap: 8px;
 }
 
+.config-row-group {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+@media (min-width: 550px) {
+    .config-row-group {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.config-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.config-field label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.config-field select {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    color: var(--text-main);
+    font-family: var(--font);
+    font-size: 0.88rem;
+    outline: none;
+    cursor: pointer;
+    min-height: 44px;
+}
+
+.elroq-wakeup-hint {
+    background: rgba(41, 182, 246, 0.08);
+    border: 1px solid rgba(41, 182, 246, 0.25);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-top: 14px;
+    font-size: 0.82rem;
+    color: var(--text-main);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.4;
+}
+
+.elroq-wakeup-hint strong {
+    color: #29b6f6;
+}
+
+.text-cyan {
+    color: #29b6f6;
+}
+
 .btn-primary {
     background: var(--primary);
     color: #fff;

@@ -7,10 +7,14 @@ services:
     ports:
       - "2009:2009"
     volumes:
-      # Persistierung der Konfiguration, Ersparnis-Statistik & SSL Zertifikate
+      # Persistierung der Konfiguration, Ersparnis-Statistik, SSL Zertifikate & Live-Mounts
       - ./config.json:/app/config.json
       - ./savings.json:/app/savings.json
       - ./certs:/app/certs
+      - ./index.html:/app/index.html
+      - ./styles.css:/app/styles.css
+      - ./app.js:/app/app.js
+      - ./server.py:/app/server.py
     environment:
       - TZ=Europe/Vienna
       - PYTHONUNBUFFERED=1
